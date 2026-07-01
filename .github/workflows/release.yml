@@ -6,15 +6,26 @@ on:
       - 'v*.*.*'
 
 permissions:
-  contents: write
-
-env:
-  CARGO_TERM_COLOR: always
+  contents: read
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/create-gh-release-action@v1
+        with:
+          changelog: CHANGELOG.md
+
+  upload-assets:
+    name: Upload ${{ matrix.target }}
+    needs: create-release
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +45,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup cross toolchain
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
           bin: review-engine
