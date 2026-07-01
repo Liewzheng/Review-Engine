@@ -20,7 +20,7 @@
 
 ### Changed
 - Replaced `dirs` dependency with `home` to avoid MPL-2.0 transitive dependency
-- Rewrote `README.md` to focus on value proposition, quick start, and Open Core positioning
+- Rewrote `README.md` to focus on value proposition, quick start, and enterprise positioning
 - Updated `install.sh` for GitHub Releases and `raw.githubusercontent.com`
 - Updated public documentation URLs from private GitLab to GitHub distribution address
 - Enterprise contact email set to `isletspace@outlook.com`
