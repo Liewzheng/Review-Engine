@@ -1,29 +1,29 @@
-# review-engine
+# ReviewEngine
 
 > A virtual **CodeReview Board** for every pull request — multi-expert, scored, and actionable.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-**Open Core · Free for individuals · Enterprise features available**
+**Free for individuals · Enterprise features available**
 
 [中文文档](README.zh-CN.md)
 
-review-engine is released under the [Apache License 2.0](LICENSE). The core CLI, local review, GitLab/GitHub integrations, REST API, and default expert team are free and open source. Enterprise features such as SSO, audit logs, custom expert templates, and dedicated support are offered separately under a commercial license.
+ReviewEngine is released under the [Apache License 2.0](LICENSE). The core CLI, local review, GitLab/GitHub integrations, REST API, and default expert team are free and open source. Enterprise features such as SSO, audit logs, custom expert templates, and dedicated support are offered separately under a commercial license.
 
 ---
 
-## Why review-engine?
+## Why ReviewEngine?
 
 Consistent, deep code review is hard. Teams are busy, context is fragmented, and it's easy to miss security gaps, performance regressions, or reuse opportunities — especially in large diffs or unfamiliar code.
 
-review-engine brings a virtual engineering team to every review: a configurable **CodeReview Board** where multiple AI experts look at the same change in parallel, each through their own lens, and produce structured, scored findings you can act on.
+ReviewEngine brings a virtual engineering team to every review: a configurable **CodeReview Board** where multiple AI experts look at the same change in parallel, each through their own lens, and produce structured, scored findings you can act on.
 
 - **Parallel expert review** — Security, Performance, Quality, Reuse, Docs, and more review together.
 - **Structured output** — Every finding includes severity, confidence, evidence, impact, recommendation, and effort.
 - **Scored, comparable results** — Per-expert scores plus a weighted overall score and a clear risk level.
 - **Runs where you work** — GitLab MR, GitHub PR, local repo, CI/CD, or REST API.
 
-| How code review often feels            | How review-engine approaches it                                                |
+| How code review often feels            | How ReviewEngine approaches it                                                |
 | -------------------------------------- | ------------------------------------------------------------------------------ |
 | "Did anyone check for SQL injection?"  | A Security Lead is always on the Board and reports findings explicitly.        |
 | "This diff is huge, where do I start?" | Experts focus on their domain; findings are consolidated into a scored report. |
@@ -34,7 +34,7 @@ review-engine brings a virtual engineering team to every review: a configurable 
 
 ## Who is it for?
 
-You might like review-engine if:
+You might like ReviewEngine if:
 
 - **You want depth, not just surface-level comments.** Multiple experts mean security, performance, quality, and documentation concerns are all reviewed in one pass.
 - **You want review _before_ opening a PR/MR.** Run it locally against `main`, staged changes, or a commit range and fix issues early.
@@ -154,7 +154,7 @@ For full CLI options, environment variables, LLM providers, and config reference
 
 ## Supported LLM providers
 
-review-engine supports multiple LLM providers out of the box:
+ReviewEngine supports multiple LLM providers out of the box:
 
 - **OpenAI** (e.g., GPT-4o)
 - **Anthropic** (e.g., Claude)
@@ -181,7 +181,7 @@ See [`docs/configuration.md`](docs/configuration.md) for the full configuration 
 
 ## Integrations
 
-review-engine fits into existing workflows through multiple entry points:
+ReviewEngine fits into existing workflows through multiple entry points:
 
 - **GitLab MR** — review via CLI with `--mr-url` or through webhook comments (`/review`, `/improve`).
 - **GitHub PR** — review via CLI with `--mr-url` or webhook.
@@ -223,7 +223,7 @@ Input → Config Resolution → Expert Selection → Parallel Review → Consoli
 
 ## Performance
 
-review-engine is designed to stay out of your way:
+ReviewEngine is designed to stay out of your way:
 
 - **Static binary** — no runtime dependencies, fast startup.
 - **Parallel experts** — multiple LLM calls run concurrently where possible.
@@ -236,7 +236,7 @@ We do not publish synthetic benchmark claims; the best way to assess performance
 
 ## Commands
 
-review-engine is organized around a small set of focused commands:
+ReviewEngine is organized around a small set of focused commands:
 
 | Command            | Purpose                                                    |
 | ------------------ | ---------------------------------------------------------- |
@@ -263,15 +263,15 @@ We welcome contributors. Whether it's a bug report, a docs improvement, or a new
 
 ---
 
-## Open Core & Enterprise
+## Enterprise
 
 - **Core** — Apache-2.0, free for individuals and teams, developed in this repository.
 - **Enterprise** — SSO, audit logs, custom expert templates, advanced analytics, and dedicated support are offered separately.
 
-For details on the Open Core model and enterprise offerings, see [`docs/enterprise.md`](docs/enterprise.md).
+For details on enterprise offerings, see [`docs/enterprise.md`](docs/enterprise.md).
 
 ---
 
 ## License
 
-The review-engine core is licensed under the [Apache License 2.0](LICENSE). Enterprise features and commercial support are developed separately and are not part of this open-source repository.
+The ReviewEngine core is licensed under the [Apache License 2.0](LICENSE). Enterprise features and commercial support are developed separately and are not part of this open-source repository.

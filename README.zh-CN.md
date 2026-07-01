@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-**Open Core · 个人免费 · 企业版功能可选**
+**个人免费 · 企业版功能可选**
 
 [English Documentation](README.md)
 
@@ -263,12 +263,12 @@ review-engine 围绕一组精简的命令组织：
 
 ---
 
-## Open Core 与企业版
+## 企业版
 
 - **核心版** —— Apache-2.0 协议，个人和团队免费，在本仓库中开发。
 - **企业版** —— 单独提供 SSO、审计日志、自定义专家模板、高级分析和专属支持。
 
-Open Core 模式和企业版详情见 [`docs/enterprise.md`](docs/enterprise.md)。
+企业版详情请见 [`docs/enterprise.md`](docs/enterprise.md)。
 
 ---
 

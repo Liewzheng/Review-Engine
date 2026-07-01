@@ -30,7 +30,7 @@ This directory contains the user-facing documentation for review-engine.
 
 | Document | What you'll learn |
 |---|---|
-| [Enterprise](enterprise.md) | Open Core model, free vs. enterprise features, and how to contact us. |
+| [Enterprise](enterprise.md) | Free and open-source core, free vs. enterprise features, and how to contact us. |
 
 ## Design
 
@@ -38,7 +38,7 @@ This directory contains the user-facing documentation for review-engine.
 |---|---|
 | [CodeReview Board design](professional_team_design.md) | The virtual engineering team model, review flow, and output standards. |
 
-> Historical planning notes, roadmaps, issue analyses, and checklists are maintained separately and not included in the published documentation.
+> Historical planning notes, roadmaps, issue analyses, and checklists are maintained separately and are not included in the published documentation.
 
 ## Related
 

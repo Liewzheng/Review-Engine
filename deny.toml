@@ -2,7 +2,7 @@
 # Documentation: https://embarkstudios.github.io/cargo-deny/
 #
 # This file is used by cargo-deny to audit dependency licenses. It is intended
-# to keep the Open Core distribution free of copyleft or otherwise problematic
+# to keep the open-source distribution free of copyleft or otherwise problematic
 # licenses that would conflict with the Apache-2.0-licensed core and the separate
 # commercial enterprise offering.
 
@@ -23,7 +23,7 @@ feature-depth = 1
 [licenses]
 version = 2
 
-# Permissive licenses that are compatible with the review-engine Open Core model.
+# Permissive licenses that are compatible with the review-engine open-source distribution.
 allow = [
     "MIT",
     "Apache-2.0",

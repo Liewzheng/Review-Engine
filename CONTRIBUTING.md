@@ -2,12 +2,9 @@
 
 Thank you for your interest in improving review-engine! We welcome contributions from the community, whether they are bug fixes, documentation improvements, new tests, or feature suggestions.
 
-## Project Model: Open Core
+## Project model
 
-review-engine follows an **Open Core** business model:
-
-- The **core engine** in this repository is open source under the Apache License 2.0 and is free for individuals, teams, and organizations to build upon.
-- **Enterprise features**, multi-tenant SaaS, and commercial support are developed in a separate, closed-source repository and are not part of this open-source codebase.
+ReviewEngine is released under the Apache License 2.0. The core engine in this repository is open source and free for individuals, teams, and organizations to build upon. Enterprise features and commercial support are developed separately and are not part of this open-source codebase.
 
 By keeping the core open, we hope to benefit individual developers, foster external contributions, and maintain transparency in the code review process.
 
