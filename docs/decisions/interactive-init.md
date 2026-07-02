@@ -26,7 +26,7 @@ tags:
 
 ```bash
 review-engine init            # 交互式问答
-review-engine init --default  # 输出内置默认配置到 stdout
+review-engine init --default  # 写入内置默认配置到 .code-audit-config.toml
 ```
 
 去掉 `--output` flag。保存路径在交互中询问。

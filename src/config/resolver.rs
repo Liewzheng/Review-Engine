@@ -10,7 +10,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 /// Parse, merge, apply environment overrides, and validate a TOML config string.
-pub(crate) fn load_and_apply(toml_content: &str) -> Result<AppConfig> {
+pub fn load_and_apply(toml_content: &str) -> Result<AppConfig> {
     let parsed = parse_toml(toml_content)?;
     let merged = merge_default(parsed)?;
     let config = apply_env_overrides(merged);

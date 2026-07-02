@@ -134,7 +134,7 @@ The `init` command interactively creates a `.code-audit-config.toml` for the cur
 review-engine init
 ```
 
-To print the built-in default config without prompts:
+To write the built-in default config to `.code-audit-config.toml` without prompts:
 
 ```bash
 review-engine init --default

@@ -1,8 +1,17 @@
 use once_cell::sync::Lazy;
-use prometheus::{Counter, Histogram, HistogramOpts, Opts, Registry};
+use prometheus::{Counter, Gauge, Histogram, HistogramOpts, Opts, Registry};
 
 /// Global Prometheus registry.
-pub static REGISTRY: Lazy<Registry> = Lazy::new(Registry::new);
+pub static REGISTRY: Lazy<Registry> = Lazy::new(|| {
+    let registry = Registry::new();
+    // Register a build-info gauge so `/metrics` always exposes at least one
+    // `review_engine_*` series, even before any review traffic is handled.
+    if let Ok(build_info) = Gauge::new("review_engine_build_info", "Review Engine build information") {
+        build_info.set(1.0);
+        registry.register(Box::new(build_info)).ok();
+    }
+    registry
+});
 
 /// Total number of review requests.
 #[allow(clippy::expect_used)]

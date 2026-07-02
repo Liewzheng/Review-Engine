@@ -390,9 +390,11 @@ pub fn run_interactive(local_path: &str) -> Result<()> {
     Ok(())
 }
 
-/// Output the built-in default configuration to stdout.
+/// Write the built-in default configuration to `.code-audit-config.toml`.
 pub fn run_default() -> Result<()> {
     let config = default_config()?;
-    println!("{}", toml::to_string_pretty(&config)?);
+    let toml = toml::to_string_pretty(&config)?;
+    std::fs::write(".code-audit-config.toml", toml)?;
+    println!("Created .code-audit-config.toml");
     Ok(())
 }

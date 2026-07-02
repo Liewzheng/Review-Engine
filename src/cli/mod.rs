@@ -324,7 +324,7 @@ pub async fn run() -> Result<()> {
         }
         Commands::Validate { config } => {
             let content = tokio::fs::read_to_string(&config).await?;
-            let parsed = review_engine::config::parse_toml(&content)?;
+            let parsed = review_engine::config::load_and_apply(&content)?;
             println!("✓ Valid config: {} experts defined", parsed.review_experts.len());
         }
         Commands::Default => {
