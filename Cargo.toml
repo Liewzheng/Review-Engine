@@ -117,3 +117,5 @@ module_name_repetitions = { level = "allow", priority = -1 }
 [dev-dependencies]
 tempfile = "3.27.0"
 wiremock = "0.6"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["full"] }
