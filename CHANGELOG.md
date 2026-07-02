@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.3] - 2026-07-02
+
+### Fixed
+- Fixed malformed markdown code fences in repo-review reports when LLM evidence already includes its own fences.
+- Updated `prometheus` from 0.13.4 to 0.14.0 (with default features disabled, keeping only `process`) and `pyo3` from 0.23.5 to 0.29.0 to resolve `cargo audit` vulnerabilities in `protobuf` (RUSTSEC-2024-0437) and `pyo3` (RUSTSEC-2025-0020, RUSTSEC-2026-0177).
+
 ## [0.6.2] - 2026-06-30
 
 ### Added
