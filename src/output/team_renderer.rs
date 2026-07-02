@@ -42,7 +42,7 @@ pub fn render_team_report(
         })
         .collect();
 
-    let (overall_score, risk_level) = crate::scoring::compute_overall(&expert_findings);
+    let (overall_score, risk_level) = crate::scoring::review::compute_overall(&expert_findings);
     let tl_dr = generate_tldr(reports, &risk_level);
 
     // Flatten all findings (needed for both Findings section and footer)

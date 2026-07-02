@@ -203,7 +203,7 @@ pub async fn run_local(
 
     let (experts, mr_info) = prepare_review(&config, "local", "local", "main");
 
-    let (reports, _) = review_engine::orchestrator::run_experts(
+    let (reports, _) = review_engine::team::orchestrator::run_experts(
         &experts,
         &mr_info,
         &diff,
@@ -268,7 +268,7 @@ pub async fn run_local_repo(
 
     let (experts, mr_info) = prepare_review(&config, local_path, "local", base_ref);
 
-    let (reports, _) = review_engine::orchestrator::run_experts(
+    let (reports, _) = review_engine::team::orchestrator::run_experts(
         &experts,
         &mr_info,
         &diff,

@@ -40,7 +40,7 @@ pub(crate) async fn run_review_common(
     sha: Option<&str>,
 ) -> anyhow::Result<()> {
     use crate::config;
-    use crate::orchestrator;
+    use crate::team::orchestrator;
 
     let config = config::resolve_config(None).await?;
 

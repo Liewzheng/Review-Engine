@@ -27,7 +27,6 @@ pub mod language;
 pub mod llm;
 pub mod metrics;
 pub mod models;
-pub mod orchestrator;
 pub mod output;
 pub mod progress;
 pub mod prompt;
@@ -91,7 +90,7 @@ pub async fn run_review(
         None => (crate::progress::new_progress_map(), uuid::Uuid::new_v4().to_string()),
     };
 
-    let (findings, global_context) = orchestrator::run_experts(
+    let (findings, global_context) = crate::team::orchestrator::run_experts(
         &experts,
         &mr_info,
         &diff,
@@ -105,7 +104,7 @@ pub async fn run_review(
     let output = if aggregated {
         match experts.iter().find(|e| e.name == "aggregator") {
             Some(aggregator) => {
-                let aggregated_report = orchestrator::run_aggregator(
+                let aggregated_report = crate::team::orchestrator::run_aggregator(
                     aggregator,
                     &findings,
                     &llm_configs,

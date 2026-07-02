@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::models::*;
-use crate::scoring;
+use crate::scoring::review;
 
 /// Configuration for the lead consolidator.
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ impl ConsolidatorConfig {
 
         // Step 4: Generate overall assessment
         let score = total_score.unwrap_or_else(|| self.compute_score(reports));
-        let risk_level = scoring::score_to_risk_level(score);
+        let risk_level = review::score_to_risk_level(score);
         let tl_dr = self.generate_tldr(reports, &risk_level, all_findings.len());
 
         let assessment = OverallAssessment {
@@ -189,7 +189,7 @@ impl ConsolidatorConfig {
             .iter()
             .map(|r| (r.expert_name.as_str(), r.findings.as_slice(), weight))
             .collect();
-        let (score, _) = scoring::compute_overall(&data);
+        let (score, _) = review::compute_overall(&data);
         score
     }
 
