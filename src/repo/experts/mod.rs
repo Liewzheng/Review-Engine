@@ -165,7 +165,7 @@ pub(crate) fn parse_yaml_findings(items: &[serde_yaml_ng::Value]) -> Vec<ScoreIt
 /// `"critical"`, `"high"`, `"medium"`, `"low"`, or `"healthy"`.
 pub fn weighted_total(scores: &[ExpertScore]) -> (u8, String) {
     let pairs: Vec<(u8, u8)> = scores.iter().map(|s| (s.score, s.weight)).collect();
-    let score = crate::scoring::compute_weighted(&pairs);
+    let score = crate::scoring::review::compute_weighted(&pairs);
 
     (score, score_to_risk_level(score).to_string())
 }

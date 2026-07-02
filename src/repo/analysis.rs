@@ -43,7 +43,7 @@ pub fn analyze(entries: &[FileEntry]) -> RepoAnalysis {
     let large_files = find_large_files(entries);
     let language_breakdown = build_language_breakdown(entries);
     let security_patterns = scan_security_patterns(entries);
-    let score = super::scoring::score_repository(entries, &large_files, &security_patterns);
+    let score = crate::scoring::repo::score_repository(entries, &large_files, &security_patterns);
 
     RepoAnalysis {
         health_score: score.health_score,

@@ -15,7 +15,6 @@ use std::path::{Path, PathBuf};
 pub mod analysis;
 pub mod experts;
 pub mod filter;
-pub mod scoring;
 
 /// Metadata about a single file in the repository.
 #[derive(Debug, Clone)]
