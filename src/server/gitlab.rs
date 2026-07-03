@@ -1,50 +1,86 @@
-use axum::{extract::State, http::StatusCode, routing::post, Json};
+use axum::{http::StatusCode, Json};
 use serde_json::Value;
 
 use super::dispatcher::MrDispatcher;
+use super::webhook::WebhookHandler;
 
-/// Shared state for GitLab webhook handling.
+use async_trait::async_trait;
+use axum::http::HeaderMap;
+
+/// GitLab webhook handler.
 #[derive(Clone)]
-pub struct GitLabWebhookState {
+pub struct GitLabWebhookHandler {
     pub webhook_secret: String,
     pub dispatcher: MrDispatcher,
+    pub token: String,
 }
 
-/// Register GitLab webhook routes on the given router.
-pub fn routes() -> axum::Router<GitLabWebhookState> {
-    axum::Router::new().route("/webhook/gitlab", post(handle_webhook))
+impl GitLabWebhookHandler {
+    /// Create a new GitLab webhook handler.
+    pub fn new(webhook_secret: String, dispatcher: MrDispatcher, token: String) -> Self {
+        Self {
+            webhook_secret,
+            dispatcher,
+            token,
+        }
+    }
 }
 
-/// Handle incoming GitLab webhook events.
-async fn handle_webhook(
-    State(state): State<GitLabWebhookState>,
-    headers: axum::http::HeaderMap,
-    body: String,
-) -> Result<Json<Value>, StatusCode> {
-    // Verify X-Gitlab-Token
-    let token = headers
-        .get("X-Gitlab-Token")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-
-    if token != state.webhook_secret {
-        tracing::warn!("Webhook received with invalid token");
-        return Err(StatusCode::FORBIDDEN);
+#[async_trait]
+impl WebhookHandler for GitLabWebhookHandler {
+    fn path(&self) -> &'static str {
+        "/webhook/gitlab"
     }
 
-    // Parse event type from headers
-    let event = headers
-        .get("X-Gitlab-Event")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
+    fn name(&self) -> &'static str {
+        "gitlab"
+    }
 
-    match event {
-        "Merge Request Hook" => handle_mr_hook(&body, &state.dispatcher).await,
-        "Note Hook" => handle_note_hook(&body, &state.dispatcher).await,
-        "Push Hook" => handle_push_hook(&body).await,
-        _ => {
-            tracing::debug!("Ignoring unsupported event: {}", event);
-            Ok(Json(serde_json::json!({ "status": "ignored" })))
+    async fn verify(
+        &self,
+        headers: &HeaderMap,
+        _body: &str,
+    ) -> Result<(), (StatusCode, Json<Value>)> {
+        let token = headers
+            .get("X-Gitlab-Token")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        if token != self.webhook_secret {
+            tracing::warn!("GitLab webhook received with invalid token");
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({"error": "invalid token"})),
+            ));
+        }
+
+        Ok(())
+    }
+
+    async fn handle_event(
+        &self,
+        headers: &HeaderMap,
+        body: &str,
+    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+        let event = headers
+            .get("X-Gitlab-Event")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        match event {
+            "Merge Request Hook" => handle_mr_hook(&body, &self.dispatcher, &self.token)
+                .await
+                .map_err(|status| (status, Json(serde_json::json!({"error": "request failed"})))),
+            "Note Hook" => handle_note_hook(&body, &self.dispatcher, &self.token)
+                .await
+                .map_err(|status| (status, Json(serde_json::json!({"error": "request failed"})))),
+            "Push Hook" => handle_push_hook(&body)
+                .await
+                .map_err(|status| (status, Json(serde_json::json!({"error": "request failed"})))),
+            _ => {
+                tracing::debug!("Ignoring unsupported GitLab event: {}", event);
+                Ok(Json(serde_json::json!({ "status": "ignored" })))
+            }
         }
     }
 }
@@ -59,14 +95,20 @@ struct MrHookPayload {
 }
 
 /// Parse and validate an MR webhook body into its essential fields.
-fn parse_mr_hook_payload(body: &str) -> Result<MrHookPayload, StatusCode> {
+fn parse_mr_hook_payload(body: &str, gitlab_token: &str) -> Result<MrHookPayload, StatusCode> {
     let parsed: Value = serde_json::from_str(body).map_err(|e| {
         tracing::error!("Failed to parse MR hook: {}", e);
         StatusCode::BAD_REQUEST
     })?;
 
-    let action = parsed["object_attributes"]["action"].as_str().unwrap_or("").to_string();
-    let project_url = parsed["project"]["web_url"].as_str().unwrap_or("").to_string();
+    let action = parsed["object_attributes"]["action"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let project_url = parsed["project"]["web_url"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     let mr_iid = parsed["object_attributes"]["iid"].as_u64().unwrap_or(0);
     let mr_url = if !project_url.is_empty() && mr_iid > 0 {
         format!("{}/-/merge_requests/{}", project_url, mr_iid)
@@ -77,19 +119,24 @@ fn parse_mr_hook_payload(body: &str) -> Result<MrHookPayload, StatusCode> {
         .as_str()
         .unwrap_or("")
         .to_string();
-    let gitlab_token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
 
     Ok(MrHookPayload {
         action,
         mr_url,
         mr_iid,
         sha,
-        gitlab_token,
+        gitlab_token: gitlab_token.to_string(),
     })
 }
 
 /// Spawn a background task that runs the full review for an MR.
-fn spawn_mr_review_task(dispatcher: &MrDispatcher, mr_url: String, sha: String, gitlab_token: String, mr_iid: u64) {
+fn spawn_mr_review_task(
+    dispatcher: &MrDispatcher,
+    mr_url: String,
+    sha: String,
+    gitlab_token: String,
+    mr_iid: u64,
+) {
     let d = dispatcher.clone();
     tokio::spawn(async move {
         if let Err(e) = run_review_for_mr(&mr_url, &gitlab_token, Some(&d), Some(&mr_url), Some(&sha)).await {
@@ -100,7 +147,13 @@ fn spawn_mr_review_task(dispatcher: &MrDispatcher, mr_url: String, sha: String, 
 }
 
 /// Handle the `InProgress` dispatcher state: wait and then retry.
-async fn handle_mr_in_progress(dispatcher: &MrDispatcher, mr_url: &str, sha: &str, gitlab_token: &str, mr_iid: u64) {
+async fn handle_mr_in_progress(
+    dispatcher: &MrDispatcher,
+    mr_url: &str,
+    sha: &str,
+    gitlab_token: &str,
+    mr_iid: u64,
+) {
     tracing::info!("MR !{} review in progress, waiting...", mr_iid);
     dispatcher.wait(mr_url).await;
     // After wait, re-check if current SHA needs a new review
@@ -122,7 +175,13 @@ async fn handle_mr_in_progress(dispatcher: &MrDispatcher, mr_url: &str, sha: &st
 
 /// Dispatch an MR webhook event to start or defer a review based on the
 /// dispatcher state.
-async fn dispatch_mr_event(dispatcher: &MrDispatcher, mr_url: &str, sha: &str, gitlab_token: &str, mr_iid: u64) {
+async fn dispatch_mr_event(
+    dispatcher: &MrDispatcher,
+    mr_url: &str,
+    sha: &str,
+    gitlab_token: &str,
+    mr_iid: u64,
+) {
     match dispatcher.try_start(mr_url, sha).await {
         super::dispatcher::ShouldStart::Go => {
             spawn_mr_review_task(
@@ -142,8 +201,12 @@ async fn dispatch_mr_event(dispatcher: &MrDispatcher, mr_url: &str, sha: &str, g
     }
 }
 
-async fn handle_mr_hook(body: &str, dispatcher: &MrDispatcher) -> Result<Json<Value>, StatusCode> {
-    let payload = parse_mr_hook_payload(body)?;
+async fn handle_mr_hook(
+    body: &str,
+    dispatcher: &MrDispatcher,
+    gitlab_token: &str,
+) -> Result<Json<Value>, StatusCode> {
+    let payload = parse_mr_hook_payload(body, gitlab_token)?;
 
     tracing::info!("MR !{} webhook received: action={}", payload.mr_iid, payload.action);
 
@@ -192,7 +255,11 @@ async fn run_review_for_mr(
     super::run_review_common(mr_url, gitlab_token, dispatcher, dispatch_key, sha).await
 }
 
-async fn handle_note_hook(body: &str, dispatcher: &MrDispatcher) -> Result<Json<Value>, StatusCode> {
+async fn handle_note_hook(
+    body: &str,
+    dispatcher: &MrDispatcher,
+    gitlab_token: &str,
+) -> Result<Json<Value>, StatusCode> {
     let parsed: Value = serde_json::from_str(body).map_err(|e| {
         tracing::error!("Failed to parse Note hook: {}", e);
         StatusCode::BAD_REQUEST
@@ -213,11 +280,10 @@ async fn handle_note_hook(body: &str, dispatcher: &MrDispatcher) -> Result<Json<
         } else {
             String::new()
         };
-        let gitlab_token = std::env::var("GITLAB_TOKEN").unwrap_or_default();
 
         if !mr_url.is_empty() && !gitlab_token.is_empty() {
             let url = mr_url;
-            let token = gitlab_token;
+            let token = gitlab_token.to_string();
             let sha = format!("note_{}", uuid::Uuid::new_v4());
 
             match dispatcher.try_start(&url, &sha).await {
@@ -263,20 +329,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_webhook_state_creation() {
-        let state = GitLabWebhookState {
-            webhook_secret: "test-secret".to_string(),
-            dispatcher: MrDispatcher::new(),
-        };
-        assert_eq!(state.webhook_secret, "test-secret");
+    fn test_webhook_handler_creation() {
+        let handler = GitLabWebhookHandler::new(
+            "test-secret".to_string(),
+            MrDispatcher::new(),
+            "test-token".to_string(),
+        );
+        assert_eq!(handler.webhook_secret, "test-secret");
+        assert_eq!(handler.path(), "/webhook/gitlab");
+        assert_eq!(handler.name(), "gitlab");
     }
 
     #[test]
-    fn test_webhook_state_empty_secret() {
-        let state = GitLabWebhookState {
-            webhook_secret: String::new(),
-            dispatcher: MrDispatcher::new(),
-        };
-        assert!(state.webhook_secret.is_empty());
+    fn test_webhook_handler_empty_secret() {
+        let handler = GitLabWebhookHandler::new(
+            String::new(),
+            MrDispatcher::new(),
+            "test-token".to_string(),
+        );
+        assert!(handler.webhook_secret.is_empty());
     }
 }

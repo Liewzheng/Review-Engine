@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.5] - 2026-07-03
+
+### Changed
+- Unified GitHub and GitLab webhook handling under a provider-agnostic `WebhookHandler` trait in `src/server/webhook.rs`.
+- `src/server/router.rs` no longer depends on concrete `github`/`gitlab` modules; it accepts a `Vec<Arc<dyn WebhookHandler>>` and registers each handler via a shared closure route.
+- `GitHubWebhookState` renamed to `GitHubWebhookHandler` and `GitLabWebhookState` renamed to `GitLabWebhookHandler`; both implement `WebhookHandler` and expose `new` constructors.
+- GitLab webhook token is now read from `GITLAB_TOKEN` in `src/cli/mod.rs` and passed into `GitLabWebhookHandler::new` instead of being read from the environment inside the handler.
+
 ## [0.6.4] - 2026-07-02
 
 ### Added
