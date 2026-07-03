@@ -31,22 +31,14 @@ pub trait WebhookHandler: Send + Sync {
     ///
     /// Returns the JSON response on success, or a status code and JSON error
     /// body on failure.
-    async fn handle_event(
-        &self,
-        headers: &HeaderMap,
-        body: &str,
-    ) -> Result<Json<Value>, (StatusCode, Json<Value>)>;
+    async fn handle_event(&self, headers: &HeaderMap, body: &str) -> Result<Json<Value>, (StatusCode, Json<Value>)>;
 }
 
 /// Shared entry point for all webhook routes.
 ///
 /// Verifies the request, dispatches the event, and maps the result to an
 /// Axum response.
-pub async fn handle_webhook(
-    handler: Arc<dyn WebhookHandler>,
-    headers: HeaderMap,
-    body: String,
-) -> impl IntoResponse {
+pub async fn handle_webhook(handler: Arc<dyn WebhookHandler>, headers: HeaderMap, body: String) -> impl IntoResponse {
     if let Err((status, json)) = handler.verify(&headers, &body).await {
         tracing::warn!("{} webhook verification failed", handler.name());
         return (status, json).into_response();

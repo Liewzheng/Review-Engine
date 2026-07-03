@@ -4,7 +4,11 @@
 //! probes, metrics, progress tracking, REST API routes, and optional
 //! webhook handlers.
 
-use axum::{routing::{get, post}, http::HeaderMap, Router};
+use axum::{
+    http::HeaderMap,
+    routing::{get, post},
+    Router,
+};
 use std::sync::Arc;
 
 use super::{api, auth::AuthConfig, routes, webhook, AppState};
@@ -14,11 +18,7 @@ use webhook::WebhookHandler;
 ///
 /// Always mounts health, metrics, progress, and `/api/v1` routes.
 /// Webhook handlers are mounted for each handler provided in the vector.
-pub fn build(
-    state: Arc<AppState>,
-    auth: Arc<AuthConfig>,
-    webhook_handlers: Vec<Arc<dyn WebhookHandler>>,
-) -> Router {
+pub fn build(state: Arc<AppState>, auth: Arc<AuthConfig>, webhook_handlers: Vec<Arc<dyn WebhookHandler>>) -> Router {
     let api_routes = api::routes(state.clone(), auth);
 
     let mut app = Router::new()

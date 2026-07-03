@@ -83,11 +83,7 @@ impl WebhookHandler for GitHubWebhookHandler {
         Ok(())
     }
 
-    async fn handle_event(
-        &self,
-        headers: &HeaderMap,
-        body: &str,
-    ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    async fn handle_event(&self, headers: &HeaderMap, body: &str) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
         let event = headers
             .get("X-GitHub-Event")
             .and_then(|v| v.to_str().ok())
@@ -321,11 +317,8 @@ mod tests {
 
     #[test]
     fn test_handler_creation() {
-        let handler = GitHubWebhookHandler::new(
-            "test-secret".to_string(),
-            MrDispatcher::new(),
-            "test-token".to_string(),
-        );
+        let handler =
+            GitHubWebhookHandler::new("test-secret".to_string(), MrDispatcher::new(), "test-token".to_string());
         assert_eq!(handler.path(), "/webhook/github");
         assert_eq!(handler.name(), "github");
     }
