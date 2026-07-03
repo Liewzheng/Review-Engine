@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.6.6] - Unreleased
+
+### Removed
+- Removed the unused `review_context` module (`src/review_context/mod.rs`); no other source file imported it. This resolves the self-review false positive about a potential circular dependency with `team`/`scoring`.
+
 ## [0.6.5] - 2026-07-03
 
 ### Added

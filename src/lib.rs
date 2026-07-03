@@ -31,7 +31,6 @@ pub mod progress;
 pub mod prompt;
 pub mod publisher;
 pub mod repo;
-pub mod review_context;
 pub mod scoring;
 pub mod server;
 pub mod team;
