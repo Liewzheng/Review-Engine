@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.6.9] - Unreleased
+## [0.6.9] - 2026-07-06
 
 ### Added
 - All PRs (small and large) now run a lead overview before expert review.
