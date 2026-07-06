@@ -20,8 +20,10 @@ impl PromptEngine {
     /// the binary. Panics if any template fails to parse (this is
     /// considered a programming error).
     pub fn new() -> Self {
-        Self::try_new()
-            .expect("Failed to initialize PromptEngine: one or more built-in templates failed to parse")
+        match Self::try_new() {
+            Ok(engine) => engine,
+            Err(_) => panic!("Failed to initialize PromptEngine: one or more built-in templates failed to parse"),
+        }
     }
 
     /// Try to create a new `PromptEngine` and register all built-in templates.

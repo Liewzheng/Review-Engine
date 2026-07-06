@@ -484,13 +484,16 @@ pub async fn run() -> Result<()> {
                 None => {
                     let candidates = [
                         std::env::current_dir().ok().map(|p| p.join(".code-audit-config.toml")),
-                        home::home_dir().map(|p| p.join(".config").join("review-engine").join(".code-audit-config.toml")),
+                        home::home_dir()
+                            .map(|p| p.join(".config").join("review-engine").join(".code-audit-config.toml")),
                     ];
                     candidates
                         .into_iter()
                         .flatten()
                         .find(|p| p.exists())
-                        .ok_or_else(|| anyhow::anyhow!("No config file found. Use --config or run review-engine init."))?
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("No config file found. Use --config or run review-engine init.")
+                        })?
                         .to_string_lossy()
                         .to_string()
                 }
@@ -539,7 +542,9 @@ pub async fn run() -> Result<()> {
             let state = Arc::new(app_state);
             let dispatcher = review_engine::server::dispatcher::MrDispatcher::new();
             let mut handlers: Vec<Arc<dyn review_engine::server::webhook::WebhookHandler>> = vec![];
-            let gitlab_token = gitlab_token.or_else(|| std::env::var("GITLAB_TOKEN").ok()).unwrap_or_default();
+            let gitlab_token = gitlab_token
+                .or_else(|| std::env::var("GITLAB_TOKEN").ok())
+                .unwrap_or_default();
             if let Some(secret) = gitlab_webhook_secret.or_else(|| std::env::var("GITLAB_WEBHOOK_SECRET").ok()) {
                 if !secret.is_empty() {
                     handlers.push(Arc::new(review_engine::server::gitlab::GitLabWebhookHandler::new(
@@ -590,7 +595,17 @@ pub async fn run() -> Result<()> {
             publish,
             ..
         } => {
-            handlers::run_improve(&url, config, gitlab_token, github_token, llm_config, &format, &output, publish).await?;
+            handlers::run_improve(
+                &url,
+                config,
+                gitlab_token,
+                github_token,
+                llm_config,
+                &format,
+                &output,
+                publish,
+            )
+            .await?;
         }
         Commands::Improve {
             diff: Some(diff_path),
@@ -643,7 +658,17 @@ pub async fn run() -> Result<()> {
             publish,
             ..
         } => {
-            handlers::run_describe(&url, config, gitlab_token, github_token, llm_config, &format, &output, publish).await?;
+            handlers::run_describe(
+                &url,
+                config,
+                gitlab_token,
+                github_token,
+                llm_config,
+                &format,
+                &output,
+                publish,
+            )
+            .await?;
         }
         Commands::Describe {
             diff: Some(diff_path),
@@ -697,7 +722,17 @@ pub async fn run() -> Result<()> {
             ..
         } => {
             let q = question.unwrap_or_default();
-            handlers::run_ask(&q, &url, config, gitlab_token, github_token, llm_config, &format, &output).await?;
+            handlers::run_ask(
+                &q,
+                &url,
+                config,
+                gitlab_token,
+                github_token,
+                llm_config,
+                &format,
+                &output,
+            )
+            .await?;
         }
         Commands::Ask {
             question,
@@ -721,7 +756,10 @@ pub async fn run() -> Result<()> {
             ..
         } => {
             let q = question.unwrap_or_default();
-            handlers::run_ask_local_repo(&q, &path, None, None, false, None, None, config, llm_config, &format, &output).await?;
+            handlers::run_ask_local_repo(
+                &q, &path, None, None, false, None, None, config, llm_config, &format, &output,
+            )
+            .await?;
         }
         Commands::Ask {
             question,

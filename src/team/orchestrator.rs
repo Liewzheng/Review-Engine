@@ -8,6 +8,7 @@ use tokio::sync::Semaphore;
 use tracing::info;
 
 use crate::actions::registry::CommandRegistry;
+use crate::actions::registry::ExpertSelection;
 use crate::diff::chunker;
 use crate::diff::filter;
 use crate::diff::large_pr;

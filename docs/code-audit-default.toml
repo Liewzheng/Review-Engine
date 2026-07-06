@@ -63,7 +63,7 @@ window_seconds = 60
 # ========================================
 
 [commands]
-review = true
+review = false
 describe = false
 improve = false
 ask = false

@@ -77,7 +77,10 @@ pub fn parse_aggregator_response(yaml_text: &str) -> Result<AggregatedReport> {
                 match serde_yaml_ng::from_str::<serde_yaml_ng::Value>(&fallback) {
                     Ok(v) => v,
                     Err(e2) => {
-                        tracing::warn!("Aggregator fenced YAML fallback also failed: {}. Returning empty report.", e2);
+                        tracing::warn!(
+                            "Aggregator fenced YAML fallback also failed: {}. Returning empty report.",
+                            e2
+                        );
                         // Layer 3: empty report
                         return Ok(AggregatedReport {
                             findings: vec![],

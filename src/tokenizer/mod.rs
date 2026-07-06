@@ -45,7 +45,9 @@ fn get_bpe(encoding: &str) -> Result<&'static CoreBPE> {
                 let bpe = cl100k_base().map_err(|e| anyhow::anyhow!("failed to load cl100k_base: {}", e))?;
                 CL100K.set(bpe).ok();
             }
-            CL100K.get().ok_or_else(|| anyhow::anyhow!("failed to load cl100k_base"))
+            CL100K
+                .get()
+                .ok_or_else(|| anyhow::anyhow!("failed to load cl100k_base"))
         }
     }
 }
@@ -70,7 +72,11 @@ pub fn count_tokens(text: &str, model: &str) -> Result<usize> {
             Ok(tokens.len())
         }
         Err(e) => {
-            tracing::warn!("Tokenizer load failed for model '{}': {}. Falling back to whitespace word count.", model, e);
+            tracing::warn!(
+                "Tokenizer load failed for model '{}': {}. Falling back to whitespace word count.",
+                model,
+                e
+            );
             Ok(text.split_whitespace().count())
         }
     }
@@ -87,7 +93,11 @@ pub fn count_tokens_with_encoding(text: &str, encoding: &str) -> Result<usize> {
             Ok(tokens.len())
         }
         Err(e) => {
-            tracing::warn!("Tokenizer load failed for encoding '{}': {}. Falling back to whitespace word count.", encoding, e);
+            tracing::warn!(
+                "Tokenizer load failed for encoding '{}': {}. Falling back to whitespace word count.",
+                encoding,
+                e
+            );
             Ok(text.split_whitespace().count())
         }
     }

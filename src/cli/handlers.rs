@@ -462,7 +462,10 @@ pub async fn run_ask(
     let llm_client = review_engine::llm::client::LLMClient::new();
     let result = review_engine::actions::ask::run_ask(&llm_client, &configs, question, &diff, &mr_info, None).await?;
 
-    let md = format!("## Ask\n\n**Question**: {}\n\n**Answer**: {}\n", question, result.answer);
+    let md = format!(
+        "## Ask\n\n**Question**: {}\n\n**Answer**: {}\n",
+        question, result.answer
+    );
 
     let review_out = ReviewOutput {
         reports: vec![ExpertReport {
@@ -501,7 +504,10 @@ pub async fn run_ask_local_diff(
     let llm_client = review_engine::llm::client::LLMClient::new();
     let result = review_engine::actions::ask::run_ask(&llm_client, &configs, question, &diff, &mr_info, None).await?;
 
-    let md = format!("## Ask\n\n**Question**: {}\n\n**Answer**: {}\n", question, result.answer);
+    let md = format!(
+        "## Ask\n\n**Question**: {}\n\n**Answer**: {}\n",
+        question, result.answer
+    );
 
     let review_out = ReviewOutput {
         reports: vec![ExpertReport {
@@ -555,7 +561,10 @@ pub async fn run_ask_local_repo(
     let llm_client = review_engine::llm::client::LLMClient::new();
     let result = review_engine::actions::ask::run_ask(&llm_client, &configs, question, &diff, &mr_info, None).await?;
 
-    let md = format!("## Ask\n\n**Question**: {}\n\n**Answer**: {}\n", question, result.answer);
+    let md = format!(
+        "## Ask\n\n**Question**: {}\n\n**Answer**: {}\n",
+        question, result.answer
+    );
 
     let review_out = ReviewOutput {
         reports: vec![ExpertReport {

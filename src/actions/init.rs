@@ -226,12 +226,7 @@ fn compute_weights(selected: &[&(&str, u8, &str, &str)]) -> Result<Vec<u8>> {
         let sum: u32 = weights.iter().map(|&w| w as u32).sum();
         if sum != 100 {
             let diff = (100i32 - sum as i32) as i8;
-            if let Some(max_idx) = weights
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, w)| *w)
-                .map(|(i, _)| i)
-            {
+            if let Some(max_idx) = weights.iter().enumerate().max_by_key(|(_, w)| *w).map(|(i, _)| i) {
                 let adjusted = (weights[max_idx] as i16 + diff as i16).clamp(0, 255) as u8;
                 weights[max_idx] = adjusted;
             }
