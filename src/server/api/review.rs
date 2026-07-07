@@ -157,6 +157,11 @@ pub struct ListParams {
     status: Option<String>,
     page: Option<u64>,
     per_page: Option<u64>,
+    q: Option<String>,
+    project: Option<String>,
+    repository: Option<String>,
+    date_from: Option<String>,
+    date_to: Option<String>,
 }
 
 async fn list_reviews(State(state): State<Arc<AppState>>, Query(params): Query<ListParams>) -> impl IntoResponse {
@@ -181,7 +186,27 @@ async fn list_reviews(State(state): State<Arc<AppState>>, Query(params): Query<L
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(20).min(100);
 
-    let (items, total) = store.list(status, page, per_page).await;
+    let date_from = params.date_from.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+    let date_to = params.date_to.as_deref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let (items, total) = store.list(
+        status,
+        page,
+        per_page,
+        params.q.as_deref(),
+        params.project.as_deref(),
+        params.repository.as_deref(),
+        date_from,
+        date_to,
+    ).await;
     let items: Vec<TaskStatus> = items.iter().map(task_to_status).collect();
 
     Json(serde_json::json!({

@@ -94,7 +94,7 @@ async fn get_queue_tasks(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).min(100);
 
-    let (items, total) = store.list(status, page, per_page).await;
+    let (items, total) = store.list(status, page, per_page, None, None, None, None, None).await;
     let tasks: Vec<serde_json::Value> = items.iter().map(task_to_queue_task).collect();
 
     Json(serde_json::json!({

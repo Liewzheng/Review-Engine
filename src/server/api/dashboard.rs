@@ -27,7 +27,7 @@ async fn get_dashboard(State(state): State<Arc<AppState>>) -> impl IntoResponse 
         }
     };
 
-    let (items, _total) = store.list(None, 1, 1000).await;
+    let (items, _total) = store.list(None, 1, 1000, None, None, None, None, None).await;
 
     let kpis = compute_kpis(&items);
     let trend = compute_trend(&items);

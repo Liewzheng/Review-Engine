@@ -212,12 +212,53 @@ impl TaskStore {
         self.inner.read().await.get(&task_id).cloned()
     }
 
-    pub async fn list(&self, status: Option<TaskState>, page: u64, per_page: u64) -> (Vec<TaskEntry>, u64) {
+    pub async fn list(
+        &self,
+        status: Option<TaskState>,
+        page: u64,
+        per_page: u64,
+        q: Option<&str>,
+        project: Option<&str>,
+        repository: Option<&str>,
+        date_from: Option<chrono::DateTime<chrono::Utc>>,
+        date_to: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> (Vec<TaskEntry>, u64) {
         let map = self.inner.read().await;
-        let mut filtered: Vec<TaskEntry> = match status {
-            Some(ref s) => map.values().filter(|e| e.state == *s).cloned().collect(),
-            None => map.values().cloned().collect(),
-        };
+        let mut filtered: Vec<TaskEntry> = map.values().cloned().collect();
+
+        if let Some(s) = status {
+            filtered.retain(|e| e.state == s);
+        }
+
+        if let Some(q_str) = q {
+            let q_lower = q_str.to_lowercase();
+            filtered.retain(|e| {
+                let meta = &e.source_meta;
+                meta.mr_title.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                    || meta.project.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                    || meta.repository.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                    || meta.branch.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                    || meta.author_name.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+                    || meta.commit_sha.as_deref().unwrap_or("").to_lowercase().contains(&q_lower)
+            });
+        }
+
+        if let Some(p) = project {
+            filtered.retain(|e| e.source_meta.project.as_deref() == Some(p));
+        }
+
+        if let Some(r) = repository {
+            filtered.retain(|e| e.source_meta.repository.as_deref() == Some(r));
+        }
+
+        if let Some(from) = date_from {
+            filtered.retain(|e| e.created_at >= from);
+        }
+
+        if let Some(to) = date_to {
+            filtered.retain(|e| e.created_at <= to);
+        }
+
         let total = filtered.len() as u64;
         // Sort by created_at descending so pagination works correctly
         filtered.sort_by_key(|b| std::cmp::Reverse(b.created_at));
