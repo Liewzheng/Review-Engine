@@ -8,7 +8,7 @@
       </div>
       <div class="stats-info">
         <div class="stats-label">{{ label }}</div>
-        <div class="stats-value" :style="valueStyle">{{ value }}</div>
+        <div class="stats-value" :class="{ 'is-flashing': isFlashing }" :style="valueStyle">{{ value }}</div>
       </div>
     </div>
     <el-progress
@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps<{
   label: string
@@ -31,6 +31,19 @@ const props = defineProps<{
   color: string
   max: number
 }>()
+
+const isFlashing = ref(false)
+let flashTimeout: ReturnType<typeof setTimeout> | null = null
+
+watch(() => props.value, (newVal, oldVal) => {
+  if (typeof oldVal === 'number' && newVal > oldVal) {
+    isFlashing.value = true
+    if (flashTimeout) clearTimeout(flashTimeout)
+    flashTimeout = setTimeout(() => {
+      isFlashing.value = false
+    }, 200)
+  }
+})
 
 const percentage = computed(() => {
   if (props.max === 0) return 0
@@ -55,11 +68,12 @@ const valueStyle = computed(() => ({
 
 .stats-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.4), 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), var(--shadow-card);
 }
 
 [data-theme="light"] .stats-card:hover {
-  box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 1px var(--brand), var(--shadow-card);
 }
 
 .stats-header {
@@ -72,7 +86,7 @@ const valueStyle = computed(() => ({
 .stats-icon {
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -80,15 +94,20 @@ const valueStyle = computed(() => ({
 }
 
 .stats-label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   margin-bottom: 4px;
 }
 
 .stats-value {
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 600;
   font-family: var(--font-mono);
+  transition: color 0.2s ease;
+}
+
+.stats-value.is-flashing {
+  color: var(--warning) !important;
 }
 
 .stats-progress :deep(.el-progress-bar__outer) {

@@ -1,7 +1,7 @@
 <template>
-  <el-card class="task-card" :class="{ 'is-paused': isPaused && task.status === 'queued' }" shadow="never">
+  <el-card class="task-card" :class="{ 'is-paused': isPaused && task.status === 'queued', 'sse-update': wasUpdated }" shadow="never">
     <div class="task-header">
-      <span class="status-dot" :style="{ backgroundColor: statusColor }"></span>
+      <span class="status-dot" :class="{ 'is-running': task.status === 'running' }" :style="{ backgroundColor: statusColor }"></span>
       <span class="task-title" :title="task.mrTitle">{{ task.mrTitle }}</span>
     </div>
     <div class="task-subtitle">{{ task.project }} / {{ task.repository }}</div>
@@ -77,6 +77,7 @@ import type { QueueTask } from '../../types/queue'
 const props = defineProps<{
   task: QueueTask
   isPaused: boolean
+  wasUpdated?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -114,7 +115,7 @@ onUnmounted(() => {
 
 const formattedElapsed = computed(() => {
   const ms = props.task.status === 'running' && props.task.startedAt
-    ? now.value - new Date(props.task.startedAt).getTime() + props.task.elapsedMs
+    ? now.value - new Date(props.task.startedAt).getTime()
     : props.task.elapsedMs
   const seconds = Math.floor(ms / 1000)
   const minutes = Math.floor(seconds / 60)
@@ -145,17 +146,28 @@ const handleViewLogs = () => {
 .task-card {
   position: relative;
   border: 1px solid var(--border-color);
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  max-width: 360px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, border-color 0.2s ease;
   overflow: hidden;
 }
 
 .task-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.4), 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), var(--shadow-card);
 }
 
 [data-theme="light"] .task-card:hover {
-  box-shadow: 0 8px 12px -2px rgba(0, 0, 0, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 0 0 1px var(--brand), var(--shadow-card);
+}
+
+.task-card.sse-update {
+  animation: flash-border 0.6s ease;
+}
+
+@keyframes flash-border {
+  0% { border-color: var(--brand); }
+  100% { border-color: var(--border-color); }
 }
 
 .task-header {
@@ -170,6 +182,15 @@ const handleViewLogs = () => {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.status-dot.is-running {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .task-title {
@@ -249,7 +270,6 @@ const handleViewLogs = () => {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(2px);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;

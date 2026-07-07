@@ -35,6 +35,7 @@ const activeTasks = computed(() => tasks.value.filter(t => t.status === 'running
 const queuedTasks = computed(() => tasks.value.filter(t => t.status === 'queued'))
 const failedTasks = computed(() => tasks.value.filter(t => t.status === 'failed'))
 const allTasks = computed(() => tasks.value)
+const recentlyUpdated = ref<string[]>([])
 
 // --- Mock data generation ---
 const generateMockTasks = (): QueueTask[] => {
@@ -169,6 +170,10 @@ const startMockSse = () => {
       if (task.status === 'running' && task.progress < 100) {
         const increment = Math.floor(Math.random() * 4) + 1
         task.progress = Math.min(task.progress + increment, 100)
+        recentlyUpdated.value = [...recentlyUpdated.value, task.id]
+        setTimeout(() => {
+          recentlyUpdated.value = recentlyUpdated.value.filter(id => id !== task.id)
+        }, 600)
         if (task.progress === 100) {
           task.status = 'completed'
           task.elapsedMs = task.startedAt
@@ -366,14 +371,6 @@ onUnmounted(() => {
         />
       </div>
 
-      <!-- SSE Connection Status -->
-      <div class="connection-status">
-        <el-tag :type="sseConnected ? 'success' : 'info'" size="small" effect="plain">
-          <el-icon v-if="sseConnected" class="status-icon"><Loading /></el-icon>
-          <span>{{ sseConnected ? 'Live Updates' : 'Connecting...' }}</span>
-        </el-tag>
-      </div>
-
       <!-- Active Tasks -->
       <div
         v-if="activeTasks.length > 0"
@@ -385,19 +382,13 @@ onUnmounted(() => {
             <el-badge :value="activeTasks.length" type="primary" />
           </div>
         </div>
-        <div v-if="activeTasks.length === 0" class="section-empty">
-          <el-empty description="No active tasks">
-            <template #image>
-              <el-icon :size="48" color="var(--success)"><Check /></el-icon>
-            </template>
-          </el-empty>
-        </div>
-        <TransitionGroup v-else name="task" tag="div" class="task-grid">
+        <TransitionGroup name="task" tag="div" class="task-grid">
           <TaskCard
             v-for="task in activeTasks"
             :key="task.id"
             :task="task"
             :is-paused="isPaused"
+            :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"
             @view-logs="handleViewLogs"
@@ -416,19 +407,13 @@ onUnmounted(() => {
             <el-badge :value="queuedTasks.length" type="info" />
           </div>
         </div>
-        <div v-if="queuedTasks.length === 0" class="section-empty">
-          <el-empty description="Queue is empty">
-            <template #image>
-              <el-icon :size="48" color="var(--info)"><InfoFilled /></el-icon>
-            </template>
-          </el-empty>
-        </div>
-        <TransitionGroup v-else name="task" tag="div" class="task-grid">
+        <TransitionGroup name="task" tag="div" class="task-grid">
           <TaskCard
             v-for="task in queuedTasks"
             :key="task.id"
             :task="task"
             :is-paused="isPaused"
+            :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"
             @view-logs="handleViewLogs"
@@ -447,19 +432,13 @@ onUnmounted(() => {
             <el-badge :value="failedTasks.length" type="danger" />
           </div>
         </div>
-        <div v-if="failedTasks.length === 0" class="section-empty">
-          <el-empty description="No failed tasks">
-            <template #image>
-              <el-icon :size="48" color="var(--success)"><Check /></el-icon>
-            </template>
-          </el-empty>
-        </div>
-        <TransitionGroup v-else name="task" tag="div" class="task-grid">
+        <TransitionGroup name="task" tag="div" class="task-grid">
           <TaskCard
             v-for="task in failedTasks"
             :key="task.id"
             :task="task"
             :is-paused="isPaused"
+            :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"
             @view-logs="handleViewLogs"
@@ -488,7 +467,7 @@ onUnmounted(() => {
 /* Page Header */
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
@@ -501,14 +480,14 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 4px 0;
 }
 
 .page-subtitle {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
 }
@@ -551,23 +530,6 @@ onUnmounted(() => {
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
-}
-
-/* Connection Status */
-.connection-status {
-  margin-bottom: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.status-icon {
-  animation: spin 1s linear infinite;
-  margin-right: 4px;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* Task Sections */
@@ -643,6 +605,12 @@ onUnmounted(() => {
 }
 
 /* Responsive */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .task-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 @media (max-width: 1023px) {
   .task-grid {
     grid-template-columns: repeat(2, 1fr);
