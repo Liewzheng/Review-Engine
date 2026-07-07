@@ -75,11 +75,16 @@ curl http://localhost:8080/health
 
 1. Go to **Project → Settings → Webhooks**
 2. Add URL: `http://<your-server-ip>:8080/webhook/gitlab`
-3. Set **Secret Token**: the value from `GITLAB_WEBHOOK_SECRET`
-4. Select triggers:
+3. Set **Secret Token**: the value from `GITLAB_WEBHOOK_SECRET` (legacy, optional)
+4. Set **Signing Token**: the value from `GITLAB_WEBHOOK_SIGNING_SECRET` (recommended, GitLab 19.0+)
+   - More secure than Secret Token: HMAC-SHA256 of the request body
+   - Review-Engine verifies the `X-Gitlab-Webhook-Signature` header
+5. Select triggers:
    - ✅ **Merge request events**
    - ✅ **Comments** (optional, for re-trigger)
-5. Save and test with "Test → Merge request events"
+6. Save and test with "Test → Merge request events"
+
+> **Note:** You can configure both Secret Token and Signing Token for defense-in-depth. Review-Engine accepts the request only if all configured verification methods pass.
 
 ### Option B: Group-Level Webhook (All Projects)
 
@@ -100,7 +105,8 @@ curl http://localhost:8080/health
 | Item | Status | How |
 |------|--------|-----|
 | API token set | ☐ | `REVIEW_API_TOKEN` in `.env` |
-| Webhook secret set | ☐ | `GITLAB_WEBHOOK_SECRET` in `.env` |
+| Webhook secret (legacy) set | ☐ | `GITLAB_WEBHOOK_SECRET` in `.env` (optional) |
+| Webhook signing token set | ☐ | `GITLAB_WEBHOOK_SIGNING_SECRET` in `.env` (recommended, GitLab 19.0+) |
 | HTTPS enabled | ☐ | Use Caddy/Nginx reverse proxy |
 | Firewall rules | ☐ | Only expose 8080 to GitLab EE |
 | Token rotation | ☐ | Rotate every 90 days |
@@ -117,6 +123,22 @@ docker compose logs review-engine | grep -i "webhook\|gitlab"
 
 # Verify GitLab can reach your server
 curl -v http://<your-server-ip>:8080/webhook/gitlab -X POST
+```
+
+### Signing token verification fails
+
+If you configured `GITLAB_WEBHOOK_SIGNING_SECRET` but webhooks return 403:
+
+```bash
+# Check that the signing secret matches GitLab's signing token
+docker compose logs review-engine | grep -i "signing\|signature\|mismatch"
+
+# Verify both headers are present (if using both methods)
+curl -v http://<your-server-ip>:8080/webhook/gitlab \
+  -X POST \
+  -H "X-Gitlab-Token: $GITLAB_WEBHOOK_SECRET" \
+  -H "X-Gitlab-Webhook-Signature: sha256=..." \
+  -d '{"test":"body"}'
 ```
 
 ### LLM errors
