@@ -297,7 +297,7 @@
       <!-- Advanced Toggle -->
       <div class="advanced-toggle">
         <el-button link type="primary" @click="showAdvanced = !showAdvanced">
-          <el-icon><component :is="showAdvanced ? ArrowUp : ArrowDown" /></el-icon>
+          <el-icon><component :is="showAdvanced ? 'ArrowUp' : 'ArrowDown'" /></el-icon>
           {{ showAdvanced ? 'Hide Advanced' : 'Show Advanced' }}
         </el-button>
       </div>
@@ -643,7 +643,7 @@ function removePattern(index: number) {
 }
 
 // --- Navigation Guard ---
-onBeforeRouteLeave(async (to, from, next) => {
+onBeforeRouteLeave(async (_to, _from, next) => {
   if (isEditing.value && dirty.value) {
     try {
       await ElMessageBox.confirm(
