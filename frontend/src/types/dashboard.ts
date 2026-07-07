@@ -9,7 +9,7 @@ export interface KpiData {
 }
 
 export interface TrendPoint {
-  time: string;
+  time: string; // formatted time label, e.g. "14:00"
   value: number;
 }
 

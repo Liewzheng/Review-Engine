@@ -376,6 +376,15 @@ function viewOriginalComment(row: ReviewListItem) {
 }
 
 /* ─────────────── Formatting ─────────────── */
+const headerCellStyle = {
+  background: '#f5f7fa',
+  color: '#303133',
+  fontWeight: 600,
+  fontSize: '12px',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.05em',
+}
+
 function formatDuration(ms: number): string {
   if (ms <= 0) return '-'
   const sec = Math.floor(ms / 1000)
@@ -435,7 +444,7 @@ watch(() => route.query, readUrl, { deep: true })
     <!-- Header -->
     <div class="page-header">
       <h2 class="page-title">Review History</h2>
-      <el-button type="primary" :icon="Download" plain>
+      <el-button type="primary" :icon="Download" plain aria-label="Export reviews">
         Export
       </el-button>
     </div>
@@ -503,14 +512,14 @@ watch(() => route.query, readUrl, { deep: true })
           :value="r"
         />
       </el-select>
-      <el-button :icon="Close" @click="resetFilters">
+      <el-button :icon="Close" @click="resetFilters" aria-label="Reset filters">
         Reset
       </el-button>
     </div>
 
     <!-- Loading Skeleton -->
     <div v-if="loading" class="skeleton-wrapper">
-      <el-skeleton :rows="10" animated />
+      <el-skeleton :rows="5" animated />
     </div>
 
     <!-- Empty State -->
@@ -522,10 +531,13 @@ watch(() => route.query, readUrl, { deep: true })
         <el-table
           :data="pagedReviews"
           style="width: 100%"
-          :header-cell-style="{ fontWeight: 600 }"
+          :header-cell-style="headerCellStyle"
           @row-click="(row: ReviewListItem) => openDrawer(row)"
           class="history-table"
-          :height="'calc(100vh - 320px)'"
+          :height="'calc(100vh - 280px)'"
+          :stripe="false"
+          :border="false"
+          :highlight-current-row="false"
         >
           <el-table-column label="MR Title" min-width="240" sortable :sort-by="['mrTitle']">
             <template #default="{ row }">
@@ -542,7 +554,11 @@ watch(() => route.query, readUrl, { deep: true })
             </template>
           </el-table-column>
 
-          <el-table-column prop="project" label="Project" width="140" sortable class-name="col-project" />
+          <el-table-column prop="project" label="Project" width="140" sortable class-name="col-project">
+            <template #default="{ row }">
+              <el-tag size="small" type="info">{{ row.project }}</el-tag>
+            </template>
+          </el-table-column>
 
           <el-table-column label="Author" width="160" sortable :sort-by="['author.name']">
             <template #default="{ row }">
@@ -580,17 +596,17 @@ watch(() => route.query, readUrl, { deep: true })
             <template #default="{ row }">
               <el-button-group class="actions-group">
                 <el-tooltip content="Re-run review">
-                  <el-button size="small" :icon="Refresh" @click.stop="handleRerun(row)" />
+                  <el-button size="small" :icon="Refresh" @click.stop="handleRerun(row)" aria-label="Re-run review" />
                 </el-tooltip>
                 <el-tooltip content="View details">
-                  <el-button size="small" :icon="ArrowRight" @click.stop="openDrawer(row)" />
+                  <el-button size="small" :icon="ArrowRight" @click.stop="openDrawer(row)" aria-label="View details" />
                 </el-tooltip>
                 <el-dropdown trigger="click" @command="(cmd: string) => {
                   if (cmd === 'comment') viewOriginalComment(row)
                   if (cmd === 'copy') copyReviewId(row.id)
                   if (cmd === 'logs') viewLogs(row)
                 }">
-                  <el-button size="small" :icon="More" @click.stop />
+                  <el-button size="small" :icon="More" @click.stop aria-label="More actions" />
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="comment" :icon="Link">View original comment</el-dropdown-item>
@@ -618,7 +634,7 @@ watch(() => route.query, readUrl, { deep: true })
             v-model:current-page="page"
             v-model:page-size="pageSize"
             :total="total"
-            layout="prev, pager, next"
+            layout="total, prev, pager, next, jumper"
             @change="updateUrl"
           />
         </div>
@@ -628,16 +644,16 @@ watch(() => route.query, readUrl, { deep: true })
     <!-- Detail Drawer -->
     <el-drawer
       v-model="drawerOpen"
-      :title="selectedReview?.mrTitle || 'Review Details'"
       size="600px"
       class="detail-drawer"
     >
-      <div v-if="selectedReview" class="drawer-content">
-        <!-- Header -->
-        <div class="drawer-header">
-          <StatusBadge :status="selectedReview.status" />
+      <template #header>
+        <div class="drawer-title-row">
+          <h3 class="drawer-title">{{ selectedReview?.mrTitle || 'Review Details' }}</h3>
+          <StatusBadge v-if="selectedReview" :status="selectedReview.status" />
         </div>
-
+      </template>
+      <div v-if="selectedReview" class="drawer-content">
         <!-- Meta Grid -->
         <div class="meta-grid">
           <div class="meta-item">
@@ -655,7 +671,7 @@ watch(() => route.query, readUrl, { deep: true })
             </div>
           </div>
           <div class="meta-item">
-            <el-icon><GitBranch /></el-icon>
+            <el-icon><Link /></el-icon>
             <div>
               <div class="meta-label">Branch</div>
               <div class="meta-value">{{ selectedReview.branch }}</div>
@@ -770,8 +786,10 @@ watch(() => route.query, readUrl, { deep: true })
 }
 
 .page-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
   color: var(--text-primary);
   margin: 0;
 }
@@ -934,6 +952,24 @@ watch(() => route.query, readUrl, { deep: true })
   gap: 16px;
 }
 
+.drawer-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drawer-header {
   display: flex;
   justify-content: flex-end;
@@ -1075,6 +1111,11 @@ watch(() => route.query, readUrl, { deep: true })
     min-width: unset;
   }
 
+  .history-table :deep(.col-project),
+  .history-table :deep(.col-repository) {
+    display: none;
+  }
+
   .meta-grid {
     grid-template-columns: 1fr;
   }
@@ -1087,8 +1128,14 @@ watch(() => route.query, readUrl, { deep: true })
     gap: 12px;
   }
 
-  .history-table :deep(.col-project) {
+  .history-table :deep(.el-table__cell:not(.el-table-column--selection):not(.is-fixed-right)) {
     display: none;
+  }
+
+  .history-table :deep(.el-table__cell:first-child),
+  .history-table :deep(.el-table__cell:nth-child(4)),
+  .history-table :deep(.is-fixed-right) {
+    display: table-cell;
   }
 
   .pagination-bar {
