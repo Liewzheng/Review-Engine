@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessageBox, ElNotification } from 'element-plus'
 import type { QueueStats, QueueTask } from '../types/queue'
 import StatsCard from '../components/QueueMonitor/StatsCard.vue'
@@ -12,13 +12,6 @@ const loading = ref(true)
 const tasks = ref<QueueTask[]>([])
 const isPaused = ref(false)
 const sseConnected = ref(false)
-
-// --- Section shown tracking ---
-const sectionShown = reactive({
-  active: false,
-  queued: false,
-  failed: false,
-})
 
 // --- Computed stats ---
 const stats = computed<QueueStats>(() => {
@@ -42,13 +35,6 @@ const activeTasks = computed(() => tasks.value.filter(t => t.status === 'running
 const queuedTasks = computed(() => tasks.value.filter(t => t.status === 'queued'))
 const failedTasks = computed(() => tasks.value.filter(t => t.status === 'failed'))
 const allTasks = computed(() => tasks.value)
-
-// --- Update section shown tracking ---
-const updateSectionShown = () => {
-  if (activeTasks.value.length > 0) sectionShown.active = true
-  if (queuedTasks.value.length > 0) sectionShown.queued = true
-  if (failedTasks.value.length > 0) sectionShown.failed = true
-}
 
 // --- Mock data generation ---
 const generateMockTasks = (): QueueTask[] => {
@@ -170,7 +156,6 @@ const loadQueueData = async () => {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 800))
   tasks.value = generateMockTasks()
-  updateSectionShown()
   loading.value = false
   sseConnected.value = true
 }
@@ -194,7 +179,6 @@ const startMockSse = () => {
             const idx = tasks.value.findIndex(t => t.id === task.id)
             if (idx !== -1) {
               tasks.value.splice(idx, 1)
-              updateSectionShown()
             }
           }, 5000)
         }
@@ -215,11 +199,13 @@ const togglePause = () => {
 
 // --- Cancel all failed ---
 const handleCancelAllFailed = async () => {
-  const count = failedTasks.value.length
-  if (count === 0) return
+  if (failedTasks.value.length === 0) {
+    ElNotification({ type: 'info', message: 'No failed tasks to cancel', duration: 3000 })
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `Cancel all ${count} failed tasks?`,
+      `Cancel all ${failedTasks.value.length} failed tasks?`,
       'Confirm',
       {
         confirmButtonText: 'Cancel All',
@@ -228,7 +214,6 @@ const handleCancelAllFailed = async () => {
       }
     )
     tasks.value = tasks.value.filter(t => t.status !== 'failed')
-    updateSectionShown()
     ElNotification({
       type: 'success',
       message: 'All failed tasks cancelled',
@@ -256,7 +241,6 @@ const handleCancel = async (taskId: string) => {
     const idx = tasks.value.findIndex(t => t.id === taskId)
     if (idx !== -1) {
       tasks.value.splice(idx, 1)
-      updateSectionShown()
     }
     ElNotification({
       type: 'success',
@@ -276,7 +260,6 @@ const handleRetry = (taskId: string) => {
   task.errorMessage = undefined
   task.elapsedMs = 0
   task.startedAt = undefined
-  updateSectionShown()
   ElNotification({
     type: 'success',
     message: 'Task queued for retry',
@@ -393,7 +376,7 @@ onUnmounted(() => {
 
       <!-- Active Tasks -->
       <div
-        v-if="activeTasks.length > 0 || sectionShown.active"
+        v-if="activeTasks.length > 0"
         class="task-section"
       >
         <div class="section-header">
@@ -424,7 +407,7 @@ onUnmounted(() => {
 
       <!-- Queued Tasks -->
       <div
-        v-if="queuedTasks.length > 0 || sectionShown.queued"
+        v-if="queuedTasks.length > 0"
         class="task-section"
       >
         <div class="section-header">
@@ -455,7 +438,7 @@ onUnmounted(() => {
 
       <!-- Failed Tasks -->
       <div
-        v-if="failedTasks.length > 0 || sectionShown.failed"
+        v-if="failedTasks.length > 0"
         class="task-section"
       >
         <div class="section-header">

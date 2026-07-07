@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   Monitor,
@@ -19,8 +19,20 @@ const sidebarCollapsed = ref(false)
 
 const toggleTheme = () => {
   isDark.value = !isDark.value
-  document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
+  const theme = isDark.value ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('theme', theme)
 }
+
+onMounted(() => {
+  const saved = localStorage.getItem('theme')
+  if (saved) {
+    isDark.value = saved === 'dark'
+  } else {
+    isDark.value = true
+  }
+  document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
+})
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value

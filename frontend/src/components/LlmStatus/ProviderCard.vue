@@ -37,9 +37,15 @@ const statusInfo = computed(() => statusConfig[props.provider.status])
 
 const latencyColor = computed(() => {
   const ms = props.provider.latencyMs
+  if (ms === 0 || !props.provider.configured || props.provider.status === 'offline') return ''
   if (ms < 500) return 'var(--success)'
   if (ms <= 1500) return 'var(--warning)'
   return 'var(--error)'
+})
+
+const latencyStyle = computed(() => {
+  if (formattedLatency.value === '—') return {}
+  return { color: latencyColor.value }
 })
 
 const errorRateColor = computed(() => {
@@ -174,10 +180,7 @@ defineExpose({
       <div class="metrics-row">
         <div class="metric">
           <div class="metric-label">Latency</div>
-          <div
-            class="metric-value"
-            :style="{ color: formattedLatency !== '—' ? latencyColor : undefined }"
-          >
+          <div class="metric-value" :style="latencyStyle">
             {{ formattedLatency }}
           </div>
         </div>

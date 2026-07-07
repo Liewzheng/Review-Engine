@@ -21,7 +21,7 @@
         </template>
         <template v-else>
           <el-badge :is-dot="dirty" type="danger">
-            <el-button type="primary" :loading="saving" :disabled="!dirty" @click="saveChanges">
+            <el-button type="primary" :loading="saving" :disabled="!dirty || !formValid" @click="saveChanges">
               <el-icon><Check /></el-icon>
               <span>Save Changes</span>
             </el-button>
@@ -75,7 +75,7 @@
                 <div v-if="!isEditing" class="readonly-field">
                   <template v-if="!revealed.apiToken">
                     <span class="masked-text">••••••••••••</span>
-                    <el-button size="small" @click.stop="revealField('apiToken')">
+                    <el-button size="small" :disabled="false" @click.stop="revealField('apiToken')">
                       <el-icon><View /></el-icon>
                     </el-button>
                   </template>
@@ -92,7 +92,7 @@
                 <div v-if="!isEditing" class="readonly-field">
                   <template v-if="!revealed.webhookSecret">
                     <span class="masked-text">••••••••••••</span>
-                    <el-button size="small" @click.stop="revealField('webhookSecret')">
+                    <el-button size="small" :disabled="false" @click.stop="revealField('webhookSecret')">
                       <el-icon><View /></el-icon>
                     </el-button>
                   </template>
@@ -361,7 +361,7 @@
     <!-- Mobile Sticky Actions -->
     <div v-if="isEditing" class="mobile-actions">
       <el-badge :is-dot="dirty" type="danger" class="mobile-badge">
-        <el-button type="primary" :loading="saving" :disabled="!dirty" @click="saveChanges">
+        <el-button type="primary" :loading="saving" :disabled="!dirty || !formValid" @click="saveChanges">
           Save Changes
         </el-button>
       </el-badge>
@@ -371,7 +371,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessageBox, ElNotification, type FormInstance, type FormRules } from 'element-plus'
 import {
@@ -388,6 +388,7 @@ const isEditing = ref(false)
 const saving = ref(false)
 const testingConnection = ref(false)
 const testResult = ref<TestResult | null>(null)
+const formValid = ref(true)
 const showAdvanced = ref(false)
 const formRef = ref<FormInstance>()
 
@@ -417,7 +418,13 @@ const availableModels = computed(() => {
 
 const dirty = computed(() => {
   if (!isEditing.value || !originalConfig.value) return false
-  return JSON.stringify(config) !== JSON.stringify(originalConfig.value)
+  const changed = JSON.stringify(config) !== JSON.stringify(originalConfig.value)
+  if (isEditing.value && formRef.value) {
+    formRef.value.validate((valid: boolean) => {
+      formValid.value = valid
+    }).catch(() => { formValid.value = false })
+  }
+  return changed
 })
 
 // --- Validation ---
@@ -505,6 +512,14 @@ const rules = computed<FormRules>(() => ({
 }))
 
 // --- Watchers ---
+watch(() => config, () => {
+  if (isEditing.value && formRef.value) {
+    formRef.value.validate((valid: boolean) => {
+      formValid.value = valid
+    }).catch(() => { formValid.value = false })
+  }
+}, { deep: true })
+
 watch(() => config.llm.primaryProvider, (newProvider) => {
   const models = providerModels[newProvider] || []
   if (!models.includes(config.llm.defaultModel)) {
@@ -516,6 +531,7 @@ watch(() => config.llm.primaryProvider, (newProvider) => {
 function enterEditMode() {
   originalConfig.value = JSON.parse(JSON.stringify(config))
   isEditing.value = true
+  formValid.value = true
 }
 
 async function saveChanges() {

@@ -113,8 +113,14 @@
 
     <!-- Log Terminal -->
     <div v-else ref="terminalRef" class="log-terminal" @scroll="handleScroll">
+      <!-- Empty: Cleared -->
+      <div v-if="isCleared && logs.length === 0" class="empty-state">
+        <el-icon class="empty-icon" size="48"><Check /></el-icon>
+        <p>Logs cleared. New entries will appear here.</p>
+      </div>
+
       <!-- Empty: No logs yet -->
-      <div v-if="logs.length === 0" class="empty-state">
+      <div v-else-if="logs.length === 0" class="empty-state">
         <el-icon class="empty-icon" size="48"><Loading /></el-icon>
         <p>Waiting for logs...</p>
       </div>
@@ -123,12 +129,6 @@
       <div v-else-if="filteredLogs.length === 0 && logs.length > 0" class="empty-state">
         <el-icon class="empty-icon" size="48"><InfoFilled /></el-icon>
         <p>No logs match current filters</p>
-      </div>
-
-      <!-- Empty: Cleared -->
-      <div v-else-if="isCleared && logs.length === 0" class="empty-state">
-        <el-icon class="empty-icon" size="48"><Check /></el-icon>
-        <p>Logs cleared. New entries will appear here.</p>
       </div>
 
       <!-- Log Lines -->
@@ -395,6 +395,11 @@ function confirmClear() {
     logs.value = []
     isCleared.value = true
     newLogCount.value = 0
+    // 暂停 mock stream 3 秒
+    if (mockInterval) clearInterval(mockInterval)
+    setTimeout(() => {
+      startMockStream()
+    }, 3000)
   }).catch(() => {})
 }
 
@@ -697,6 +702,7 @@ watch(autoScroll, (val) => {
   animation: fadeIn 0.15s ease;
   transition: background-color 0.1s ease;
   flex-wrap: nowrap;
+  font-family: var(--font-mono);
 }
 
 @keyframes fadeIn {
@@ -725,6 +731,7 @@ watch(autoScroll, (val) => {
   min-width: 100px;
   flex-shrink: 0;
   font-size: 12px;
+  font-family: var(--font-mono);
 }
 
 .log-level {
@@ -745,6 +752,7 @@ watch(autoScroll, (val) => {
   word-break: break-word;
   overflow-wrap: anywhere;
   font-size: 13px;
+  font-family: var(--font-mono);
 }
 
 .log-message :deep(mark) {
@@ -760,6 +768,7 @@ watch(autoScroll, (val) => {
   flex-shrink: 0;
   margin-left: auto;
   padding-left: 12px;
+  font-family: var(--font-mono);
 }
 
 .meta-duration {

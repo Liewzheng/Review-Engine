@@ -106,7 +106,7 @@ function createMockProviders(): LlmProvider[] {
 /* ------------------------------------------------------------------ */
 
 const providers = ref<LlmProvider[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const testingMap = ref<Record<string, boolean>>({})
 const cardRefs = ref<InstanceType<typeof ProviderCard>[]>([])
 
