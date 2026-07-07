@@ -75,6 +75,7 @@ mod tests {
             let auth = Arc::new(AuthConfig::default());
             let handlers: Vec<Arc<dyn WebhookHandler>> = vec![Arc::new(GitLabWebhookHandler::new(
                 "test-secret".to_string(),
+                Some("test-signing".to_string()),
                 MrDispatcher::new(),
                 "test-token".to_string(),
             ))];
@@ -100,6 +101,7 @@ mod tests {
             let handlers: Vec<Arc<dyn WebhookHandler>> = vec![
                 Arc::new(GitLabWebhookHandler::new(
                     "test-secret".to_string(),
+                    Some("test-signing".to_string()),
                     MrDispatcher::new(),
                     "test-token".to_string(),
                 )),

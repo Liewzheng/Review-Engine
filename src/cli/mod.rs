@@ -134,9 +134,13 @@ enum Commands {
         #[arg(long)]
         gitlab_token: Option<String>,
 
-        /// GitLab webhook secret
+        /// GitLab webhook secret (legacy X-Gitlab-Token)
         #[arg(long)]
         gitlab_webhook_secret: Option<String>,
+
+        /// GitLab webhook signing secret (HMAC-SHA256 body signature, GitLab 19.0+)
+        #[arg(long)]
+        gitlab_webhook_signing_secret: Option<String>,
     },
 
     /// Generate a random API token
@@ -514,6 +518,7 @@ pub async fn run() -> Result<()> {
             github_webhook_secret,
             gitlab_token,
             gitlab_webhook_secret,
+            gitlab_webhook_signing_secret,
         } => {
             // Resolve API token: CLI arg > env var
             let api_token = api_token.or_else(|| std::env::var("REVIEW_API_TOKEN").ok());
@@ -545,14 +550,18 @@ pub async fn run() -> Result<()> {
             let gitlab_token = gitlab_token
                 .or_else(|| std::env::var("GITLAB_TOKEN").ok())
                 .unwrap_or_default();
-            if let Some(secret) = gitlab_webhook_secret.or_else(|| std::env::var("GITLAB_WEBHOOK_SECRET").ok()) {
-                if !secret.is_empty() {
-                    handlers.push(Arc::new(review_engine::server::gitlab::GitLabWebhookHandler::new(
-                        secret,
-                        dispatcher.clone(),
-                        gitlab_token,
-                    )));
-                }
+            let signing_secret =
+                gitlab_webhook_signing_secret.or_else(|| std::env::var("GITLAB_WEBHOOK_SIGNING_SECRET").ok());
+            let webhook_secret = gitlab_webhook_secret
+                .or_else(|| std::env::var("GITLAB_WEBHOOK_SECRET").ok())
+                .unwrap_or_default();
+            if !webhook_secret.is_empty() || signing_secret.is_some() {
+                handlers.push(Arc::new(review_engine::server::gitlab::GitLabWebhookHandler::new(
+                    webhook_secret,
+                    signing_secret,
+                    dispatcher.clone(),
+                    gitlab_token,
+                )));
             }
             if let Some((tok, secret)) = github_token
                 .or_else(|| std::env::var("GITHUB_TOKEN").ok())

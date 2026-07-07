@@ -21,8 +21,10 @@ services:
       REVIEW_API_TOKEN: ${REVIEW_API_TOKEN:?REVIEW_API_TOKEN is required}
 
       # ── GitLab EE Integration ──
+      # At least one of GITLAB_WEBHOOK_SECRET or GITLAB_WEBHOOK_SIGNING_SECRET must be configured
       GITLAB_TOKEN: ${GITLAB_TOKEN:?GITLAB_TOKEN is required}
-      GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:?GITLAB_WEBHOOK_SECRET is required}
+      GITLAB_WEBHOOK_SECRET: ${GITLAB_WEBHOOK_SECRET:-}
+      GITLAB_WEBHOOK_SIGNING_SECRET: ${GITLAB_WEBHOOK_SIGNING_SECRET:-}
 
       # ── GitLab EE URL (self-hosted) ──
       # Set this to your GitLab EE instance URL
