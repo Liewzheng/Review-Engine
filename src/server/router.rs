@@ -11,12 +11,23 @@ use axum::{
     Router,
 };
 use std::sync::Arc;
+use tower_http::services::ServeDir;
 
 use super::{api, auth::AuthConfig, routes, webhook, AppState};
 use webhook::WebhookHandler;
 
 async fn serve_frontend() -> Html<&'static str> {
     Html("<h1>Review Engine</h1><p>Dashboard coming soon. Run <code>npm run build</code> in frontend/ to build the Vue app.</p>")
+}
+
+/// Detect the frontend static assets directory (Docker or local dev).
+fn static_dir() -> Option<String> {
+    for path in ["/app/frontend/dist", "./frontend/dist"] {
+        if std::path::Path::new(path).is_dir() {
+            return Some(path.to_string());
+        }
+    }
+    None
 }
 
 /// Build the complete Axum application router.
@@ -26,8 +37,16 @@ async fn serve_frontend() -> Html<&'static str> {
 pub fn build(state: Arc<AppState>, auth: Arc<AuthConfig>, webhook_handlers: Vec<Arc<dyn WebhookHandler>>) -> Router {
     let api_routes = api::routes(state.clone(), auth);
 
-    let mut app = Router::new()
-        .route("/", get(serve_frontend))
+    let mut app = Router::new();
+
+    // Serve built frontend static files if available, otherwise placeholder
+    if let Some(dir) = static_dir() {
+        app = app.fallback_service(ServeDir::new(dir));
+    } else {
+        app = app.route("/", get(serve_frontend));
+    }
+
+    app = app
         .route("/health", get(routes::health::health))
         .route("/health/ready", get(routes::health::health_ready))
         .route("/metrics", get(routes::metrics::metrics))
