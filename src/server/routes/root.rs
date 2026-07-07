@@ -1,10 +1,61 @@
 //! Root route handler for the review-engine HTTP server.
 //!
 //! Provides a friendly landing page when users visit the root URL.
+//! Also serves the Vue frontend static files and SPA fallback.
 
 use axum::response::Html;
 
-/// Returns an HTML landing page with service info and available endpoints.
+/// Serve frontend static files with SPA fallback.
+/// Any non-file path returns index.html for Vue Router to handle.
+pub async fn serve_frontend(
+    req: axum::http::Request<axum::body::Body>,
+) -> axum::response::Response<axum::body::Body> {
+    let path = req.uri().path();
+    let file_path = if path == "/" || path == "/index.html" {
+        "frontend/dist/index.html".to_string()
+    } else {
+        format!("frontend/dist{}", path)
+    };
+
+    match tokio::fs::read(&file_path).await {
+        Ok(bytes) => {
+            let mut res = axum::response::Response::new(axum::body::Body::from(bytes));
+            if file_path.ends_with(".js") {
+                res.headers_mut().insert(
+                    "content-type",
+                    "application/javascript".parse().unwrap(),
+                );
+            } else if file_path.ends_with(".css") {
+                res.headers_mut()
+                    .insert("content-type", "text/css".parse().unwrap());
+            } else if file_path.ends_with(".svg") {
+                res.headers_mut()
+                    .insert("content-type", "image/svg+xml".parse().unwrap());
+            } else if file_path.ends_with(".png") {
+                res.headers_mut()
+                    .insert("content-type", "image/png".parse().unwrap());
+            }
+            res
+        }
+        Err(_) => {
+            // SPA fallback: return index.html for any non-file path
+            match tokio::fs::read_to_string("frontend/dist/index.html").await {
+                Ok(html) => {
+                    axum::response::Response::new(axum::body::Body::from(html))
+                }
+                Err(_) => {
+                    let mut res = axum::response::Response::new(axum::body::Body::from(
+                        "Frontend not built. Run `npm run build` in frontend/.",
+                    ));
+                    *res.status_mut() = axum::http::StatusCode::NOT_FOUND;
+                    res
+                }
+            }
+        }
+    }
+}
+
+/// Returns an HTML landing page when users visit the root URL.
 pub async fn root() -> Html<String> {
     Html(format!(
         r#"<!DOCTYPE html>
@@ -46,7 +97,7 @@ pub async fn root() -> Html<String> {
     </div>
 
     <div class="endpoint">
-        <span class="method">GET</span> <code>/progress/&#123;review_id&#125;</code>
+        <span class="method">GET</span> <code>/progress/{{review_id}}</code>
         <p>查看指定审查任务的进度</p>
     </div>
 

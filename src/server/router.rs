@@ -18,11 +18,11 @@ use webhook::WebhookHandler;
 ///
 /// Always mounts health, metrics, progress, and `/api/v1` routes.
 /// Webhook handlers are mounted for each handler provided in the vector.
+/// Serves frontend static files from `frontend/dist/` for all non-API routes.
 pub fn build(state: Arc<AppState>, auth: Arc<AuthConfig>, webhook_handlers: Vec<Arc<dyn WebhookHandler>>) -> Router {
     let api_routes = api::routes(state.clone(), auth);
 
     let mut app = Router::new()
-        .route("/", get(routes::root::root))
         .route("/health", get(routes::health::health))
         .route("/health/ready", get(routes::health::health_ready))
         .route("/metrics", get(routes::metrics::metrics))
@@ -39,6 +39,9 @@ pub fn build(state: Arc<AppState>, auth: Arc<AuthConfig>, webhook_handlers: Vec<
             }),
         );
     }
+
+    // Serve frontend static files and SPA fallback
+    app = app.fallback(get(routes::root::serve_frontend));
 
     app.with_state(state)
 }
