@@ -1,10 +1,10 @@
 :root {
-  --bg-primary: #0f172a;
-  --bg-surface: #1e293b;
-  --bg-card: #334155;
-  --border-color: #475569;
+  --bg-primary: #121314;
+  --bg-surface: #1a1c1e;
+  --bg-card: #242628;
+  --border-color: #3a3d42;
   --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
+  --text-secondary: #9ca3af;
   --brand: #6366f1;
   --brand-hover: #4f46e5;
   --success: #22c55e;
@@ -14,7 +14,7 @@
   --offline: #6b7280;
   --bg-hover: rgba(255,255,255,0.04);
   --bg-active: rgba(99,102,241,0.12);
-  --shadow-card: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -1px rgba(0,0,0,0.3);
+  --shadow-card: 0 4px 6px -1px rgba(0,0,0,0.5), 0 2px 4px -1px rgba(0,0,0,0.4);
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
