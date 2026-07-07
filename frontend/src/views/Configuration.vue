@@ -51,12 +51,12 @@
       :model="config"
       :rules="rules"
       :disabled="!isEditing"
-      label-position="top"
+      :label-position="labelPosition"
       class="config-form"
       @submit.prevent
     >
       <!-- GitLab Card -->
-      <el-card class="config-card">
+      <el-card ref="gitlabCardRef" class="config-card">
         <template #header>
           <div class="card-header">
             <el-icon><Link /></el-icon>
@@ -75,7 +75,7 @@
                 <div v-if="!isEditing" class="readonly-field">
                   <template v-if="!revealed.apiToken">
                     <span class="masked-text">••••••••••••</span>
-                    <el-button size="small" :disabled="false" @click.stop="revealField('apiToken')">
+                    <el-button size="small" aria-label="Reveal API Token" @click.stop="revealField('apiToken')">
                       <el-icon><View /></el-icon>
                     </el-button>
                   </template>
@@ -92,7 +92,7 @@
                 <div v-if="!isEditing" class="readonly-field">
                   <template v-if="!revealed.webhookSecret">
                     <span class="masked-text">••••••••••••</span>
-                    <el-button size="small" :disabled="false" @click.stop="revealField('webhookSecret')">
+                    <el-button size="small" aria-label="Reveal Webhook Secret" @click.stop="revealField('webhookSecret')">
                       <el-icon><View /></el-icon>
                     </el-button>
                   </template>
@@ -129,7 +129,7 @@
       </el-card>
 
       <!-- LLM Card -->
-      <el-card class="config-card">
+      <el-card ref="llmCardRef" class="config-card">
         <template #header>
           <div class="card-header">
             <el-icon><Cpu /></el-icon>
@@ -181,7 +181,10 @@
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="Temperature" prop="llm.temperature">
-                <el-slider v-model="config.llm.temperature" :disabled="!isEditing" :min="0" :max="2" :step="0.1" show-input />
+                <div class="slider-with-value">
+                  <el-slider v-model="config.llm.temperature" :disabled="!isEditing" :min="0" :max="2" :step="0.1" />
+                  <span class="slider-value">{{ config.llm.temperature }}</span>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
@@ -208,7 +211,7 @@
       </el-card>
 
       <!-- Review Rules Card -->
-      <el-card class="config-card">
+      <el-card ref="rulesCardRef" class="config-card">
         <template #header>
           <div class="card-header">
             <el-icon><Collection /></el-icon>
@@ -219,7 +222,10 @@
           <el-row :gutter="20">
             <el-col :xs="24" :sm="12">
               <el-form-item label="Minimum review score" prop="rules.minScore">
-                <el-slider v-model="config.rules.minScore" :disabled="!isEditing" :min="0" :max="100" :step="5" show-input />
+                <div class="slider-with-value">
+                  <el-slider v-model="config.rules.minScore" :disabled="!isEditing" :min="0" :max="100" :step="5" />
+                  <span class="slider-value">{{ config.rules.minScore }}</span>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
@@ -304,7 +310,7 @@
       </div>
 
       <!-- Advanced Card -->
-      <el-card v-show="showAdvanced" class="config-card">
+      <el-card v-show="showAdvanced" ref="advancedCardRef" class="config-card">
         <template #header>
           <div class="card-header">
             <el-icon><Tools /></el-icon>
@@ -395,6 +401,12 @@ const formRef = ref<FormInstance>()
 const config = reactive<AppConfig>(createMockConfig())
 const originalConfig = ref<AppConfig | null>(null)
 
+// Card refs for flash animation
+const gitlabCardRef = ref<HTMLElement>()
+const llmCardRef = ref<HTMLElement>()
+const rulesCardRef = ref<HTMLElement>()
+const advancedCardRef = ref<HTMLElement>()
+
 // Reveal state for read-only mode
 const revealed = reactive({
   apiToken: false,
@@ -411,6 +423,10 @@ const patternInputVisible = ref(false)
 const patternInputValue = ref('')
 const patternInputRef = ref<any>()
 
+// Responsive layout
+const windowWidth = ref(window.innerWidth)
+const labelPosition = computed(() => (windowWidth.value >= 1024 ? 'left' : 'top'))
+
 // --- Computed ---
 const availableModels = computed(() => {
   return providerModels[config.llm.primaryProvider] || []
@@ -418,13 +434,7 @@ const availableModels = computed(() => {
 
 const dirty = computed(() => {
   if (!isEditing.value || !originalConfig.value) return false
-  const changed = JSON.stringify(config) !== JSON.stringify(originalConfig.value)
-  if (isEditing.value && formRef.value) {
-    formRef.value.validate((valid: boolean) => {
-      formValid.value = valid
-    }).catch(() => { formValid.value = false })
-  }
-  return changed
+  return JSON.stringify(config) !== JSON.stringify(originalConfig.value)
 })
 
 // --- Validation ---
@@ -512,7 +522,7 @@ const rules = computed<FormRules>(() => ({
 }))
 
 // --- Watchers ---
-watch(() => config, () => {
+watch(config, () => {
   if (isEditing.value && formRef.value) {
     formRef.value.validate((valid: boolean) => {
       formValid.value = valid
@@ -538,6 +548,14 @@ async function saveChanges() {
   if (!formRef.value) return
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) {
+    nextTick(() => {
+      const firstError = document.querySelector('.el-form-item.is-error')
+      if (firstError) {
+        firstError.classList.add('shake-error')
+        setTimeout(() => firstError.classList.remove('shake-error'), 300)
+        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    })
     ElNotification({
       title: 'Validation Error',
       message: 'Please fix validation errors before saving',
@@ -563,12 +581,15 @@ async function saveChanges() {
     duration: 3000,
   })
 
-  // Flash border animation on form
-  const formEl = document.querySelector('.config-form')
-  if (formEl) {
-    formEl.classList.add('flash-success')
-    setTimeout(() => formEl.classList.remove('flash-success'), 600)
-  }
+  // Flash border animation on each card individually
+  const cardRefs = [gitlabCardRef, llmCardRef, rulesCardRef, advancedCardRef]
+  cardRefs.forEach((cardRef) => {
+    const el = cardRef.value
+    if (el) {
+      el.classList.add('flash-success')
+      setTimeout(() => el.classList.remove('flash-success'), 600)
+    }
+  })
 }
 
 async function cancelEdit() {
@@ -689,9 +710,15 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
+// --- Resize handler ---
+function handleResize() {
+  windowWidth.value = window.innerWidth
+}
+
 // --- Lifecycle ---
 onMounted(() => {
   window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('resize', handleResize)
   // Simulate loading delay
   setTimeout(() => {
     loading.value = false
@@ -700,6 +727,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('resize', handleResize)
   Object.values(revealTimers).forEach(clearInterval)
 })
 </script>
@@ -708,13 +736,13 @@ onUnmounted(() => {
 .config-page {
   max-width: 900px;
   margin: 0 auto;
-  animation: pageEnter 0.3s ease;
+  animation: pageEnter 0.2s ease;
 }
 
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -737,8 +765,10 @@ onUnmounted(() => {
 }
 
 .page-title {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
   color: var(--text-primary);
   margin-bottom: 4px;
 }
@@ -778,8 +808,18 @@ onUnmounted(() => {
   gap: 20px;
 }
 
+/* Card Design System */
 .config-card {
-  transition: opacity 0.15s ease;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  transition: opacity 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.config-card:hover {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 1px var(--brand), var(--shadow-card);
 }
 
 .config-card :deep(.el-card__header) {
@@ -791,13 +831,18 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 500;
+  font-size: 14px;
   color: var(--text-primary);
 }
 
 .card-body {
-  padding: 8px 0;
+  padding: 20px;
+}
+
+/* Form label override */
+.config-card :deep(.el-form-item__label) {
+  font-size: 12px;
 }
 
 /* Readonly fields */
@@ -836,10 +881,31 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+/* Slider with value */
+.slider-with-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.slider-with-value .el-slider {
+  flex: 1;
+}
+
+.slider-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 32px;
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
 /* Test connection */
 .test-connection {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
@@ -904,8 +970,19 @@ onUnmounted(() => {
   }
 }
 
-.flash-success :deep(.el-card) {
+.config-card.flash-success {
   animation: flashBorder 0.6s ease;
+}
+
+/* Shake animation for validation errors */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.shake-error {
+  animation: shake 0.3s ease-in-out;
 }
 
 /* Mobile sticky actions */
@@ -930,10 +1007,6 @@ onUnmounted(() => {
 
 /* Responsive */
 @media (max-width: 767px) {
-  .main-content {
-    padding-bottom: 70px;
-  }
-
   .header-actions {
     display: none;
   }
@@ -952,7 +1025,7 @@ onUnmounted(() => {
   }
 
   .card-body {
-    padding: 0;
+    padding: 16px;
   }
 
   :deep(.el-form-item__label) {
