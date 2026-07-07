@@ -9,6 +9,10 @@ import { useQueue } from '../composables/useQueue'
 // --- Composable ---
 const queue = useQueue()
 
+// Destructure reactive state for Vue template auto-unwrapping
+const isPaused = queue.isPaused
+const loading = queue.loading
+
 // --- Local UI state ---
 const sseConnected = ref(false)
 const recentlyUpdated = ref<string[]>([])
@@ -220,13 +224,13 @@ onUnmounted(() => {
       </div>
       <div class="page-header-right">
         <el-button
-          :type="queue.isPaused ? 'success' : 'warning'"
+          :type="isPaused ? 'success' : 'warning'"
           @click="togglePause"
         >
           <el-icon class="btn-icon">
-            <component :is="queue.isPaused ? 'VideoPlay' : 'VideoPause'" />
+            <component :is="isPaused ? 'VideoPlay' : 'VideoPause'" />
           </el-icon>
-          <span>{{ queue.isPaused ? 'Resume Queue' : 'Pause Queue' }}</span>
+          <span>{{ isPaused ? 'Resume Queue' : 'Pause Queue' }}</span>
         </el-button>
         <el-input-number
           v-model="maxConcurrentInput"
@@ -248,7 +252,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Loading Skeleton -->
-    <template v-if="queue.loading">
+    <template v-if="loading">
       <div class="stats-skeleton">
         <div v-for="i in 4" :key="`s-${i}`" class="skeleton-item">
           <el-skeleton :rows="2" animated />
@@ -311,7 +315,7 @@ onUnmounted(() => {
             v-for="task in activeTasks"
             :key="task.id"
             :task="task"
-            :is-paused="queue.isPaused.value"
+            :is-paused="isPaused"
             :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"
@@ -336,7 +340,7 @@ onUnmounted(() => {
             v-for="task in queuedTasks"
             :key="task.id"
             :task="task"
-            :is-paused="queue.isPaused.value"
+            :is-paused="isPaused"
             :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"
@@ -361,7 +365,7 @@ onUnmounted(() => {
             v-for="task in failedTasks"
             :key="task.id"
             :task="task"
-            :is-paused="queue.isPaused.value"
+            :is-paused="isPaused"
             :was-updated="recentlyUpdated.includes(task.id)"
             @cancel="handleCancel"
             @retry="handleRetry"

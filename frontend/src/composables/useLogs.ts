@@ -1,4 +1,4 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, reactive } from 'vue';
 import { createLogStream, downloadLogs } from '../services/logs';
 import type { LogEntry } from '../types/logs';
 import type { LogLevel } from '../types/logs';
@@ -84,7 +84,7 @@ export function useLogs() {
   onMounted(connect);
   onUnmounted(disconnect);
 
-  return {
+  return reactive({
     logs,
     filteredLogs,
     loading,
@@ -96,5 +96,5 @@ export function useLogs() {
     clearLogs,
     reconnect: connect,
     download,
-  };
+  });
 }

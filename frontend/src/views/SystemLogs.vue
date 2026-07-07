@@ -220,13 +220,13 @@ let newLogDismissTimer: number | null = null
 watch(searchInput, (val) => {
   if (keywordDebounceTimer) window.clearTimeout(keywordDebounceTimer)
   keywordDebounceTimer = window.setTimeout(() => {
-    logs.keyword.value = val
+    logs.keyword = val
   }, 150)
 })
 
 // ==================== Computed ====================
-const filteredLogs = computed(() => logs.filteredLogs.value)
-const logItems = computed(() => logs.logs.value)
+const filteredLogs = computed(() => logs.filteredLogs)
+const logItems = computed(() => logs.logs)
 
 // ==================== Formatting ====================
 function formatTimestamp(iso: string): string {
@@ -258,7 +258,7 @@ function getLevelTagType(level: LogLevel): 'info' | 'warning' | 'danger' | undef
 function highlightMessage(msg: string): string {
   let html = escapeHtml(msg)
 
-  const kw = logs.keyword.value.trim()
+  const kw = logs.keyword.trim()
   if (kw) {
     const re = new RegExp(`(${escapeRegExp(kw)})`, 'gi')
     html = html.replace(re, '<mark>$1</mark>')
@@ -322,7 +322,7 @@ async function downloadLogs() {
 }
 
 function scrollToBottom() {
-  if (logs.isPaused.value) {
+  if (logs.isPaused) {
     logs.togglePause()
   }
   if (newLogDismissTimer) window.clearTimeout(newLogDismissTimer)
@@ -344,7 +344,7 @@ function handleScroll() {
 }
 
 // ==================== Error handling ====================
-watch(() => logs.error.value, (err) => {
+watch(() => logs.error, (err) => {
   if (err) {
     ElNotification({
       type: 'error',
@@ -356,10 +356,10 @@ watch(() => logs.error.value, (err) => {
 })
 
 // Watch for new logs to clear isCleared and update newLogCount
-watch(() => logs.logs.value.length, (newLength, oldLength) => {
+watch(() => logs.logs.length, (newLength, oldLength) => {
   if (oldLength !== undefined && newLength > oldLength) {
     isCleared.value = false
-    if (!autoScroll.value && !logs.isPaused.value) {
+    if (!autoScroll.value && !logs.isPaused) {
       newLogCount.value++
       if (newLogDismissTimer) window.clearTimeout(newLogDismissTimer)
       newLogDismissTimer = window.setTimeout(() => { newLogCount.value = 0 }, 10000)

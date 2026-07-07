@@ -6,11 +6,13 @@ import type { QueueStats } from '../types/queue';
 export function useQueue() {
   const stats = ref<QueueStats | null>(null);
   const data = ref<QueueTasksResponse | null>(null);
-  const loading = ref(false);
+  const loadingCount = ref(0);
   const error = ref<string | null>(null);
 
+  const loading = computed(() => loadingCount.value > 0);
+
   async function fetchStats() {
-    loading.value = true;
+    loadingCount.value++;
     error.value = null;
     try {
       stats.value = await getQueueStats();
@@ -18,12 +20,12 @@ export function useQueue() {
       error.value = e instanceof Error ? e.message : 'Unknown error';
       stats.value = null;
     } finally {
-      loading.value = false;
+      loadingCount.value--;
     }
   }
 
   async function fetchTasks(status?: string, page: number = 1, perPage: number = 50) {
-    loading.value = true;
+    loadingCount.value++;
     error.value = null;
     try {
       data.value = await getQueueTasks(status, page, perPage);
@@ -31,7 +33,7 @@ export function useQueue() {
       error.value = e instanceof Error ? e.message : 'Unknown error';
       data.value = null;
     } finally {
-      loading.value = false;
+      loadingCount.value--;
     }
   }
 
