@@ -22,6 +22,7 @@ pub fn build(state: Arc<AppState>, auth: Arc<AuthConfig>, webhook_handlers: Vec<
     let api_routes = api::routes(state.clone(), auth);
 
     let mut app = Router::new()
+        .route("/", get(routes::root::root))
         .route("/health", get(routes::health::health))
         .route("/health/ready", get(routes::health::health_ready))
         .route("/metrics", get(routes::metrics::metrics))

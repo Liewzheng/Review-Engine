@@ -7,3 +7,4 @@
 pub mod health;
 pub mod metrics;
 pub mod progress;
+pub mod root;
