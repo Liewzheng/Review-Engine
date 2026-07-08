@@ -5,6 +5,7 @@
 ### Added
 - **Backend-Frontend Integration**: full-stack API integration between the Rust Axum backend and the Vue 3 + Element Plus frontend, including endpoints for config, experts, system health, LLM providers, logs, dashboard, queue control, and server-sent events.
 - **Queue**: new `POST /queue/tasks/{id}/retry` endpoint to re-queue failed tasks from the Queue Monitor UI.
+- **Docs**: documented Queue API endpoints (`/api/v1/queue/*`) in `docs/rest-api.md`.
 
 ### Fixed
 - **Queue Monitor**: real retry wired to the backend; cancel-all-failed now uses `Promise.allSettled` to handle partial failures; auto-refresh guarded against overlapping requests.
