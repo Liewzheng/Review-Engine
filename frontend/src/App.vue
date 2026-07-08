@@ -11,17 +11,37 @@ import {
   User,
   Moon,
   Sunny,
+  Key,
+  Menu,
 } from '@element-plus/icons-vue'
+import { setApiToken, clearApiToken, getApiToken } from './services/api'
 
 const route = useRoute()
 const isDark = ref(true)
 const sidebarCollapsed = ref(false)
+const tokenDialogVisible = ref(false)
+const tokenInput = ref('')
 
-const toggleTheme = () => {
-  isDark.value = !isDark.value
-  const theme = isDark.value ? 'dark' : 'light'
-  document.documentElement.setAttribute('data-theme', theme)
-  localStorage.setItem('theme', theme)
+const hasApiToken = (): boolean => {
+  if (typeof localStorage === 'undefined') return false
+  return !!localStorage.getItem('review_engine_api_token')
+}
+
+const openTokenDialog = () => {
+  tokenInput.value = getApiToken() || ''
+  tokenDialogVisible.value = true
+}
+
+const saveApiToken = () => {
+  const token = tokenInput.value.trim()
+  if (token) {
+    setApiToken(token)
+  } else {
+    clearApiToken()
+  }
+  tokenDialogVisible.value = false
+  // Reload so the rest of the app picks up the new token state.
+  window.location.reload()
 }
 
 onMounted(() => {
@@ -32,7 +52,18 @@ onMounted(() => {
     isDark.value = true
   }
   document.documentElement.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
+
+  if (!hasApiToken()) {
+    tokenDialogVisible.value = true
+  }
 })
+
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  const theme = isDark.value ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('theme', theme)
+}
 
 const toggleSidebar = () => {
   sidebarCollapsed.value = !sidebarCollapsed.value
@@ -91,6 +122,10 @@ const pageTitle = computed(() => {
         </button>
         <h1 class="page-title">{{ pageTitle }}</h1>
         <div class="header-actions">
+          <el-button text size="small" @click="openTokenDialog">
+            <el-icon><Key /></el-icon>
+            <span>API Token</span>
+          </el-button>
           <span class="status-badge healthy">
             <span class="status-dot"></span>
             Healthy
@@ -108,6 +143,36 @@ const pageTitle = computed(() => {
       </main>
     </div>
   </div>
+
+  <!-- API Token prompt -->
+  <el-dialog
+    v-model="tokenDialogVisible"
+    title="API Token Required"
+    width="420px"
+    :close-on-click-modal="false"
+    :close-on-press-escape="false"
+    :show-close="hasApiToken()"
+    align-center
+  >
+    <p class="token-hint">
+      Enter the <code>REVIEW_API_TOKEN</code> configured for this ReviewEngine
+      instance. The token is stored in your browser's localStorage under
+      <code>review_engine_api_token</code> and is sent as a Bearer token on API
+      requests.
+    </p>
+    <el-input
+      v-model="tokenInput"
+      type="password"
+      placeholder="Paste your API token"
+      show-password
+      clearable
+      @keyup.enter="saveApiToken"
+    />
+    <template #footer>
+      <el-button @click="tokenDialogVisible = false">Cancel</el-button>
+      <el-button type="primary" @click="saveApiToken">Save</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
@@ -296,6 +361,13 @@ const pageTitle = computed(() => {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
+}
+
+.token-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 16px 0;
 }
 
 /* Mobile */

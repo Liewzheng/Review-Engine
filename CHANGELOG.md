@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.7.4] - 2026-07-08
+
+### Security
+- **Frontend token storage**: removed `/config.json` endpoint usage so the API token is no longer exposed as a static frontend file. The web UI now stores the token in browser `localStorage` under `review_engine_api_token` and sends it as `Authorization: Bearer <token>` on every `/api/v1/*` request.
+
+### Fixed
+- **Frontend auth in Docker**: frontend API client reads the API token from `localStorage` and sends `Authorization: Bearer <token>` on all `/api/v1/*` requests.
+- **Permanent null token cache**: `getApiToken()` now reads `localStorage` on every call instead of caching a `null` value, so a token set after app startup is picked up without a reload.
+
+### Changed
+- `frontend/src/services/api.ts`: token is loaded only from `localStorage`; exports `setApiToken()` and `clearApiToken()`; no longer reads `/config.json`.
+- `frontend/src/services/logs.ts`: log download now reuses the synchronous `getApiToken()` helper from `api.ts`.
+- `frontend/src/App.vue`: prompts for an API token when none is stored; provides an **API Token** button to change or clear the token.
+- `entrypoint.sh`: no longer writes `/app/frontend/dist/config.json`; simply execs the review-engine binary.
+- `Dockerfile`: keeps `entrypoint.sh` as the entry point for future extensibility.
+- `docker-compose.yml`: clarified that `REVIEW_API_TOKEN` is used for backend API authentication and must be entered into the web UI on first visit.
+- `README.md`: added Docker deployment and web UI API token instructions.
+
 ## [0.7.3] - 2026-07-08
 
 ### Added
