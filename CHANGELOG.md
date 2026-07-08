@@ -5,6 +5,15 @@
 ### Fixed
 - **Vite dev server proxy config**: added missing `server.proxy` block to `vite.config.ts` so `/api/*` requests are correctly forwarded to the Rust backend (`http://localhost:18080`). Previously, all API calls from the SPA returned **502 Bad Gateway**, causing **LLM Status** and **Dashboard** pages to crash with `Cannot read properties of undefined (reading 'items')` and other JS errors.
 
+### Added
+- **Multi-provider CRUD API**: added `POST /api/v1/llm/providers`, `DELETE /api/v1/llm/providers/{id}`, and `PUT /api/v1/llm/providers/{id}` endpoints so users can dynamically add, remove, and update LLM providers without editing static config files.
+- **Multi-provider UI in Configuration page**: new "Additional LLM Providers" card with provider type dropdown (OpenAI, Anthropic, Ollama, Google, Azure, xAI, DeepSeek, Mistral, Together AI, OpenRouter, Custom), inline expandable edit forms, and Add/Delete/Save operations.
+- **Frontend provider types**: added `ProviderConfig`, `ProviderResponse`, `ProviderEntry` interfaces and `PROVIDER_TYPES` constant.
+
+### Changed
+- **UiLlmConfig**: added `providers: Vec<UiLlmProviderConfig>` field (backward-compatible with legacy single-provider fields).
+- **put_config()**: now saves both the legacy single provider AND all entries from the `providers` array to `state.llm_configs`.
+
 ## [0.7.6] - 2026-07-08
 
 ### Fixed
