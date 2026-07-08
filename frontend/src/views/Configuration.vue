@@ -73,7 +73,10 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="API Token" prop="gitlab.apiToken">
                 <div v-if="!isEditing" class="readonly-field">
-                  <template v-if="!revealed.apiToken">
+                  <template v-if="!config.gitlab.apiToken">
+                    <span class="empty-text">(not set)</span>
+                  </template>
+                  <template v-else-if="!revealed.apiToken">
                     <span class="masked-text">••••••••••••</span>
                     <el-button size="small" aria-label="Reveal API Token" @click.stop="revealField('apiToken')">
                       <el-icon><View /></el-icon>
@@ -90,7 +93,10 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="Webhook Secret" prop="gitlab.webhookSecret">
                 <div v-if="!isEditing" class="readonly-field">
-                  <template v-if="!revealed.webhookSecret">
+                  <template v-if="!config.gitlab.webhookSecret">
+                    <span class="empty-text">(not set)</span>
+                  </template>
+                  <template v-else-if="!revealed.webhookSecret">
                     <span class="masked-text">••••••••••••</span>
                     <el-button size="small" aria-label="Reveal Webhook Secret" @click.stop="revealField('webhookSecret')">
                       <el-icon><View /></el-icon>
@@ -107,7 +113,10 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="Webhook Signing Secret" prop="gitlab.webhookSigningSecret">
                 <div v-if="!isEditing" class="readonly-field">
-                  <template v-if="!revealed.webhookSigningSecret">
+                  <template v-if="!config.gitlab.webhookSigningSecret">
+                    <span class="empty-text">(not set)</span>
+                  </template>
+                  <template v-else-if="!revealed.webhookSigningSecret">
                     <span class="masked-text">••••••••••••</span>
                     <el-button size="small" aria-label="Reveal Webhook Signing Secret" @click.stop="revealField('webhookSigningSecret')">
                       <el-icon><View /></el-icon>
@@ -897,6 +906,12 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--warning);
   white-space: nowrap;
+}
+
+.empty-text {
+  color: var(--text-secondary);
+  font-style: italic;
+  flex: 1;
 }
 
 /* Slider with value */

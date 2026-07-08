@@ -559,8 +559,13 @@ pub async fn run() -> Result<()> {
             let signing_secret = gitlab_webhook_signing_secret
                 .or_else(|| std::env::var("GITLAB_WEBHOOK_SIGNING_SECRET").ok())
                 .or_else(|| {
-                    #[allow(clippy::unwrap_used)]
-                    let ui = state.ui_config.read().unwrap();
+                    let ui = match state.ui_config.read() {
+                        Ok(guard) => guard,
+                        Err(_) => {
+                            tracing::warn!("UI config lock is poisoned; skipping UI signing secret");
+                            return None;
+                        }
+                    };
                     Some(ui.gitlab.webhook_signing_secret.clone()).filter(|s| !s.is_empty())
                 });
             let webhook_secret = gitlab_webhook_secret

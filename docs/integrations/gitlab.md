@@ -30,6 +30,8 @@ review-engine serve --port 8080
 
 The signing token uses HMAC-SHA256 and follows the Standard Webhooks specification. Copy the entire value shown by GitLab, including the `whsec_` prefix.
 
+You can also save the signing token through the **Configuration UI** (`/#/configuration`). The value is persisted via `PUT /api/v1/config` and used as a fallback when neither `--gitlab-webhook-signing-secret` nor `GITLAB_WEBHOOK_SIGNING_SECRET` is set.
+
 ```bash
 export GITLAB_TOKEN="glpat-xxx"
 export GITLAB_WEBHOOK_SIGNING_SECRET="whsec_..."
@@ -54,6 +56,22 @@ ngrok http 8080
    - **Merge request events** — required for automatic review on open/reopen/update.
    - **Comments** — required for `/review`, `/improve`, `/describe` commands.
 5. Click **Add webhook** and test with a merge request event if desired.
+
+## Security details
+
+When signing is enabled, GitLab sends the following Standard Webhooks headers in every request:
+
+- `webhook-id` — a unique UUID for the event.
+- `webhook-timestamp` — the Unix timestamp when the event was signed.
+- `webhook-signature` — one or more HMAC-SHA256 signatures (`v1,...`) computed from the request body.
+
+review-engine:
+
+1. Verifies at least one signature in `webhook-signature` matches the secret.
+2. Validates the timestamp to prevent replay attacks (the default tolerance is 5 minutes).
+3. Rejects requests with a stale timestamp or an invalid signature.
+
+Ensure the server clock is synchronized with NTP. If you see `webhook timestamp too old` errors, the system time on the review-engine host is likely out of sync with GitLab.
 
 ## Comment commands
 
