@@ -202,19 +202,8 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="Temperature" prop="llm.temperature">
                 <div class="slider-with-value">
-                  <template v-if="isEditing">
-                    <el-slider v-model="config.llm.temperature" :min="0" :max="2" :step="0.1" />
-                    <span class="slider-value">{{ config.llm.temperature }}</span>
-                  </template>
-                  <template v-else>
-                    <div class="slider-static">
-                      <div class="slider-static-track">
-                        <div class="slider-static-fill" :style="{ width: (config.llm.temperature / 2 * 100) + '%' }" />
-                        <div class="slider-static-thumb" :style="{ left: (config.llm.temperature / 2 * 100) + '%' }" />
-                      </div>
-                      <span class="slider-value">{{ config.llm.temperature }}</span>
-                    </div>
-                  </template>
+                  <el-slider v-model="config.llm.temperature" :disabled="!isEditing" :min="0" :max="2" :step="0.1" />
+                  <span class="slider-value">{{ config.llm.temperature }}</span>
                 </div>
               </el-form-item>
             </el-col>
@@ -434,19 +423,8 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="Minimum review score" prop="rules.minScore">
                 <div class="slider-with-value">
-                  <template v-if="isEditing">
-                    <el-slider v-model="config.rules.minScore" :min="0" :max="100" :step="5" />
-                    <span class="slider-value">{{ config.rules.minScore }}</span>
-                  </template>
-                  <template v-else>
-                    <div class="slider-static">
-                      <div class="slider-static-track">
-                        <div class="slider-static-fill" :style="{ width: config.rules.minScore + '%' }" />
-                        <div class="slider-static-thumb" :style="{ left: config.rules.minScore + '%' }" />
-                      </div>
-                      <span class="slider-value">{{ config.rules.minScore }}</span>
-                    </div>
-                  </template>
+                  <el-slider v-model="config.rules.minScore" :disabled="!isEditing" :min="0" :max="100" :step="5" />
+                  <span class="slider-value">{{ config.rules.minScore }}</span>
                 </div>
               </el-form-item>
             </el-col>
@@ -1283,40 +1261,29 @@ onUnmounted(() => {
   font-family: var(--font-mono);
 }
 
-/* Static slider track for view mode */
-.slider-static {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-}
-
-.slider-static-track {
-  flex: 1;
-  height: 6px;
-  background: var(--border-color);
-  border-radius: 3px;
-  position: relative;
+/* Disabled slider — override Element Plus bare-dot default */
+.slider-with-value :deep(.el-slider.is-disabled) {
   cursor: default;
 }
-
-.slider-static-fill {
-  height: 100%;
-  background: var(--primary);
-  border-radius: 3px;
-  transition: width 0.2s;
+.slider-with-value :deep(.el-slider.is-disabled .el-slider__runway) {
+  background-color: var(--border-color);
+  cursor: default;
 }
-
-.slider-static-thumb {
-  position: absolute;
-  top: 50%;
+.slider-with-value :deep(.el-slider.is-disabled .el-slider__bar) {
+  background-color: var(--primary);
+  opacity: 0.5;
+}
+.slider-with-value :deep(.el-slider.is-disabled .el-slider__button) {
+  border-color: var(--primary);
+  opacity: 0.7;
   width: 14px;
   height: 14px;
-  background: var(--primary);
-  border: 2px solid var(--bg-primary);
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.slider-with-value :deep(.el-slider.is-disabled .el-slider__button-wrapper) {
+  cursor: default;
+}
+.slider-with-value :deep(.el-slider.is-disabled .el-slider__stop) {
+  display: none;
 }
 
 /* Test connection */
