@@ -255,6 +255,8 @@ function getLevelTagType(level: LogLevel): 'info' | 'warning' | 'danger' | undef
   }
 }
 
+// Highlight the log message safely. The raw message is first escaped via escapeHtml,
+// so any regex replacements below operate on sanitized text and v-html receives safe HTML.
 function highlightMessage(msg: string): string {
   let html = escapeHtml(msg)
 
@@ -286,12 +288,6 @@ function togglePause() {
   logs.togglePause()
 }
 
-// function trimLogs() {
-//   if (logs.logs.value.length > 5000) {
-//     logs.logs.value = logs.logs.value.slice(-5000)
-//   }
-// }
-
 function confirmClear() {
   ElMessageBox.confirm(
     'Clear visible logs? This only affects the display, not stored logs.',
@@ -305,6 +301,16 @@ function confirmClear() {
 }
 
 async function downloadLogs() {
+  try {
+    await ElMessageBox.confirm(
+      'The downloaded log file may contain sensitive information such as API keys or tokens. Please handle it carefully and store it securely.',
+      'Sensitive Content Warning',
+      { confirmButtonText: 'Download', cancelButtonText: 'Cancel', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+
   downloading.value = true
   try {
     await logs.download()

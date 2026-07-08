@@ -78,6 +78,10 @@ const fetchExperts = async () => {
   await expertsStore.fetch()
 }
 
+function handleApiError(error: unknown, fallback: string) {
+  console.error(fallback, error)
+}
+
 const handleToggle = async (id: string, enabled: boolean) => {
   try {
     await expertsStore.update(id, { enabled })
@@ -87,16 +91,16 @@ const handleToggle = async (id: string, enabled: boolean) => {
       type: enabled ? 'success' : 'warning',
       duration: 2000,
     })
-  } catch {
-    // Error handled by composable
+  } catch (e) {
+    handleApiError(e, 'Failed to toggle expert')
   }
 }
 
 const handleWeightChange = async (id: string, weight: number) => {
   try {
     await expertsStore.update(id, { weight })
-  } catch {
-    // Error handled by composable
+  } catch (e) {
+    handleApiError(e, 'Failed to update expert weight')
   }
 }
 
@@ -128,8 +132,8 @@ const saveEdit = async () => {
     })
 
     editingExpert.value = null
-  } catch {
-    // Error handled by composable
+  } catch (e) {
+    handleApiError(e, 'Failed to save expert changes')
   }
 }
 

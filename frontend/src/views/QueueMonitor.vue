@@ -6,6 +6,14 @@ import StatsCard from '../components/QueueMonitor/StatsCard.vue'
 import TaskCard from '../components/QueueMonitor/TaskCard.vue'
 import { useQueue } from '../composables/useQueue'
 
+function notifyError(e: unknown, fallback: string): void {
+  ElNotification({
+    type: 'error',
+    message: e instanceof Error ? e.message : fallback,
+    duration: 5000,
+  })
+}
+
 // --- Composable ---
 const queue = useQueue()
 
@@ -85,11 +93,7 @@ const togglePause = async () => {
       })
     }
   } catch (e) {
-    ElNotification({
-      type: 'error',
-      message: e instanceof Error ? e.message : 'Failed to toggle queue',
-      duration: 5000,
-    })
+    notifyError(e, 'Failed to toggle queue')
   }
 }
 
@@ -111,11 +115,7 @@ const handleMaxConcurrentChange = async () => {
       duration: 3000,
     })
   } catch (e) {
-    ElNotification({
-      type: 'error',
-      message: e instanceof Error ? e.message : 'Failed to update max concurrent',
-      duration: 5000,
-    })
+    notifyError(e, 'Failed to update max concurrent')
   }
 }
 
@@ -153,8 +153,9 @@ const handleCancelAllFailed = async () => {
       message: `Cancelled ${succeeded.length} tasks, ${failedIds.length} failed`,
       duration: 5000,
     })
-  } catch {
-    // User cancelled the dialog
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    notifyError(e, 'Failed to cancel all failed tasks')
   }
 }
 
@@ -180,8 +181,9 @@ const handleCancel = async (taskId: string) => {
       message: 'Task cancelled',
       duration: 3000,
     })
-  } catch {
-    // User cancelled
+  } catch (e) {
+    if (e === 'cancel' || e === 'close') return
+    notifyError(e, 'Failed to cancel task')
   }
 }
 
@@ -194,11 +196,7 @@ const handleRetry = async (taskId: string) => {
       duration: 3000,
     })
   } catch (e) {
-    ElNotification({
-      type: 'error',
-      message: e instanceof Error ? e.message : 'Failed to retry task',
-      duration: 5000,
-    })
+    notifyError(e, 'Failed to retry task')
   }
 }
 
@@ -251,12 +249,15 @@ onUnmounted(() => {
           </el-icon>
           <span>{{ isPaused ? 'Resume Queue' : 'Pause Queue' }}</span>
         </el-button>
+        <span class="toolbar-label" title="Max Concurrent">Max Concurrent</span>
         <el-input-number
           v-model="maxConcurrentInput"
           :min="1"
           :max="64"
           size="default"
           style="width: 120px"
+          aria-label="Max Concurrent"
+          title="Set the maximum number of concurrent tasks"
           @change="handleMaxConcurrentChange"
         />
         <el-button type="danger" @click="handleCancelAllFailed">
@@ -444,6 +445,12 @@ onUnmounted(() => {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.toolbar-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .btn-icon {
