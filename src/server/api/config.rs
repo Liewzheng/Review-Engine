@@ -10,6 +10,7 @@ use axum::{
 };
 use schemars::schema_for;
 use std::sync::Arc;
+use base64::Engine;
 
 use crate::models::AppConfig;
 use crate::server::AppState;
@@ -367,6 +368,28 @@ async fn put_config(State(state): State<Arc<AppState>>, Json(body): Json<UiConfi
     // Persist full UI config so GET /config returns exactly what was saved
     let mut ui = state.ui_config.write().unwrap();
     *ui = body;
+
+    // Sync GitLab config to the global runtime so webhook handler picks up changes
+    // without requiring a restart.
+    {
+        let rt = crate::server::gitlab::gitlab_runtime();
+        let mut gl_rt = rt.write().unwrap();
+        let ui_gl = &ui.gitlab;
+        if !ui_gl.api_token.is_empty() {
+            gl_rt.token = ui_gl.api_token.clone();
+        }
+        if !ui_gl.webhook_secret.is_empty() {
+            gl_rt.webhook_secret = ui_gl.webhook_secret.clone();
+        }
+        if !ui_gl.webhook_signing_secret.is_empty() {
+            let s = ui_gl.webhook_signing_secret.clone();
+            let signing_key = s
+                .strip_prefix("whsec_")
+                .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok());
+            gl_rt.signing_secret = Some(s);
+            gl_rt.signing_key = signing_key;
+        }
+    }
 
     Json(serde_json::json!({"status": "saved"})).into_response()
 }
