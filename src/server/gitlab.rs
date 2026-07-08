@@ -192,18 +192,37 @@ impl WebhookHandler for GitLabWebhookHandler {
     }
 
     async fn verify(&self, headers: &HeaderMap, body: &str) -> Result<(), (StatusCode, Json<Value>)> {
-        // At least one verification method must be configured; reject all otherwise
-        if self.webhook_secret.is_empty() && self.signing_secret.is_none() {
-            tracing::warn!("GitLab webhook rejected: neither webhook_secret nor signing_secret configured");
+        let signing_configured = self.signing_secret.as_ref().map_or(false, |s| !s.is_empty());
+        let legacy_configured = !self.webhook_secret.is_empty();
+        let signature_header_present = headers.get("webhook-signature").is_some();
+
+        // When signing is configured and GitLab sends a signature, verify only
+        // the signature. This is the migration path: legacy X-Gitlab-Token may
+        // still be wrong or absent on the same webhook.
+        if signing_configured && signature_header_present {
+            return self.verify_signing(headers, body);
+        }
+
+        // Otherwise fall back to the legacy token if it is configured.
+        if legacy_configured {
+            return self.verify_secret_token(headers);
+        }
+
+        // Signing is configured but the signature header is missing, and no
+        // legacy fallback is available.
+        if signing_configured {
+            tracing::warn!("GitLab webhook signing secret configured but webhook-signature header missing");
             return Err((
                 StatusCode::FORBIDDEN,
-                Json(serde_json::json!({"error": "no verification configured"})),
+                Json(serde_json::json!({"error": "missing webhook-signature header"})),
             ));
         }
 
-        self.verify_secret_token(headers)?;
-        self.verify_signing(headers, body)?;
-        Ok(())
+        tracing::warn!("GitLab webhook rejected: no verification configured");
+        Err((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({"error": "no verification configured"})),
+        ))
     }
 
     async fn handle_event(&self, headers: &HeaderMap, body: &str) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -680,7 +699,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_both_verify_token_wrong() {
+    async fn test_both_signing_present_legacy_wrong_ignored() {
         let raw_key = b"my-signing-secret";
         let signing_secret = format!("whsec_{}", base64::engine::general_purpose::STANDARD.encode(raw_key));
         let body = "body";
@@ -706,7 +725,7 @@ mod tests {
         headers.insert("webhook-timestamp", timestamp.parse().unwrap());
         headers.insert("webhook-signature", sig.parse().unwrap());
         let result = handler.verify(&headers, body).await;
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -747,5 +766,55 @@ mod tests {
         // No webhook-signature header, but signing not configured → OK
         let result = handler.verify(&headers, "body").await;
         assert!(result.is_ok());
+    }
+
+    // ── Migration path tests ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_both_signing_header_missing_falls_back_legacy() {
+        let raw_key = b"my-signing-secret";
+        let signing_secret = format!("whsec_{}", base64::engine::general_purpose::STANDARD.encode(raw_key));
+        let handler = GitLabWebhookHandler::new(
+            "my-webhook-secret".to_string(),
+            Some(signing_secret),
+            MrDispatcher::new(),
+            "test-token".to_string(),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Gitlab-Token", "my-webhook-secret".parse().unwrap());
+        // No webhook-signature header → fall back to legacy token
+        let result = handler.verify(&headers, "body").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_legacy_only_secret_verified() {
+        let handler = GitLabWebhookHandler::new(
+            "my-webhook-secret".to_string(),
+            None,
+            MrDispatcher::new(),
+            "test-token".to_string(),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Gitlab-Token", "my-webhook-secret".parse().unwrap());
+        let result = handler.verify(&headers, "").await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_signing_only_header_missing_rejected() {
+        let raw_key = b"my-signing-secret";
+        let signing_secret = format!("whsec_{}", base64::engine::general_purpose::STANDARD.encode(raw_key));
+        let handler = GitLabWebhookHandler::new(
+            String::new(),
+            Some(signing_secret),
+            MrDispatcher::new(),
+            "test-token".to_string(),
+        );
+        let headers = HeaderMap::new();
+        let result = handler.verify(&headers, "body").await;
+        assert!(result.is_err());
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 }
