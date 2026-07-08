@@ -309,6 +309,14 @@ impl UiConfig {
         ui.advanced.max_concurrent_reviews = app.max_concurrent_llm_calls.unwrap_or(5) as u32;
         ui.advanced.enable_metrics = true; // Default, overridden at runtime if needed
 
+        // Apply defaults for fields not mapped from AppConfig
+        if ui.llm.temperature == 0.0 {
+            ui.llm.temperature = default_temperature();
+        }
+        if ui.rules.min_score == 0 {
+            ui.rules.min_score = default_min_score();
+        }
+
         ui
     }
 }
