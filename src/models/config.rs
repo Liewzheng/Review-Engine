@@ -623,4 +623,34 @@ low_max = 85
         assert_eq!(config.scoring.risk_thresholds.medium_max, 80); // default
         assert_eq!(config.scoring.risk_thresholds.low_max, 85);
     }
+
+    // ─── ReportConfig ────────────────────────────
+
+    #[test]
+    fn test_report_config_defaults() {
+        let config: AppConfig = toml::from_str("").unwrap();
+        assert!(!config.report.aggregated);
+        assert_eq!(config.report.max_findings_per_expert, 5);
+        assert_eq!(config.report.min_confidence, 6);
+        assert!(!config.report.drop_low_confidence);
+    }
+
+    #[test]
+    fn test_report_config_custom_values() {
+        let config: AppConfig = toml::from_str(
+            r#"
+[report]
+aggregated = true
+max_findings_per_expert = 10
+min_confidence = 7
+drop_low_confidence = true
+"#,
+        )
+        .unwrap();
+
+        assert!(config.report.aggregated);
+        assert_eq!(config.report.max_findings_per_expert, 10);
+        assert_eq!(config.report.min_confidence, 7);
+        assert!(config.report.drop_low_confidence);
+    }
 }

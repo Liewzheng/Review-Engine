@@ -150,6 +150,26 @@ For full CLI options, environment variables, LLM providers, and config reference
 | `--output <file>` | Write the report to a file. |
 | `--publish` | Publish the review back to the MR/PR discussion. |
 
+### Reducing false positives
+
+ReviewEngine includes several built-in filters to reduce noise:
+
+- **Scope rules in prompts** — experts are instructed to report only issues in added or modified lines.
+- **Evidence validation** — findings that point to files or lines outside the diff are dropped automatically.
+- **Lead consolidation** — low-confidence findings can be filtered or downgraded, and duplicates are merged.
+
+Configure these in `.code-audit-config.toml` under `[report]`:
+
+```toml
+[report]
+aggregated = false
+max_findings_per_expert = 5
+min_confidence = 6          # minimum confidence threshold (0-10)
+drop_low_confidence = false  # set to true to drop findings below min_confidence
+```
+
+See [`docs/configuration.md`](docs/configuration.md) for the full configuration reference.
+
 ---
 
 ## Supported LLM providers
