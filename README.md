@@ -226,6 +226,41 @@ More examples and setup guides are in [`docs/integrations/`](docs/integrations/)
 
 ---
 
+## Docker deployment
+
+ReviewEngine ships with a `Dockerfile` and `docker-compose.yml` for containerized deployment.
+
+1. Copy the example environment file and fill in your tokens:
+
+   ```bash
+   cp .env.example .env
+   # edit .env
+   ```
+
+2. Start the service:
+
+   ```bash
+   docker compose up -d
+   ```
+
+3. Open the web UI at `http://localhost:18080` (or the port you configured).
+
+### API token in the web UI
+
+When you access the frontend for the first time, it prompts for an API token.
+Enter the same value you configured for `REVIEW_API_TOKEN`:
+
+- The token is saved in your browser's localStorage under the key `review_engine_api_token`.
+- It is sent as `Authorization: Bearer <token>` on every `/api/v1/*` request.
+- Use the **API Token** button in the header to change or clear the stored token.
+
+> **Security tip:** `REVIEW_API_TOKEN` is required when the backend binds to a
+> non-loopback address. Keep it secret, rotate it regularly, and pass it to the
+> container through environment variables or a secrets manager — never commit
+> it to version control.
+
+---
+
 ## AI Skill
 
 ReviewEngine can also be used as an [Agent Skills](https://github.com/cline/agent-skills)-compatible AI skill, so you can trigger reviews directly from supported agents.

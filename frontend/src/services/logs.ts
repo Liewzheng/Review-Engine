@@ -22,7 +22,7 @@ export function createLogStream(
 
 export async function downloadLogs(): Promise<Blob> {
   const headers: Record<string, string> = {};
-  const token = await getApiToken();
+  const token = getApiToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }

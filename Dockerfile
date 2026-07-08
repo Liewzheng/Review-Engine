@@ -73,7 +73,7 @@ COPY --from=builder /build/target/release/review-engine /usr/local/bin/review-en
 # 复制前端构建产物（从本地预构建的 dist）
 COPY frontend/dist /app/frontend/dist
 
-# 复制启动入口脚本，用于根据环境变量生成前端配置
+# 复制启动入口脚本，保留作为容器入口点以便后续扩展
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

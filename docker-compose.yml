@@ -18,8 +18,9 @@ services:
     environment:
       # ── API Authentication ──
       # Required for non-localhost binding.
-      # Also written to frontend/dist/config.json at container startup so the
-      # web UI can authenticate via /config.json.
+      # The backend uses this token to authenticate API requests. The frontend
+      # web UI prompts the user to enter this same token on first visit; it is
+      # then saved in the browser's localStorage and sent as a Bearer token.
       REVIEW_API_TOKEN: ${REVIEW_API_TOKEN:?REVIEW_API_TOKEN is required}
 
       # ── GitLab EE Integration ──

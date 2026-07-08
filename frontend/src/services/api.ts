@@ -1,43 +1,39 @@
 const BASE_URL = '/api/v1';
 const LS_TOKEN_KEY = 'review_engine_api_token';
 
-let apiTokenPromise: Promise<string | null> | null = null;
-
-async function fetchApiToken(): Promise<string | null> {
-  if (typeof localStorage !== 'undefined') {
-    const lsToken = localStorage.getItem(LS_TOKEN_KEY);
-    if (lsToken) {
-      return lsToken;
-    }
+/**
+ * Read the current API token from browser localStorage.
+ *
+ * Token policy:
+ * - The token is loaded from `localStorage.getItem('review_engine_api_token')`.
+ * - There is no `/config.json` fallback, so the token is never embedded in the
+ *   frontend bundle or served as a static file.
+ * - If no token is set, this function returns `null` every time it is called.
+ *   Callers must read it per request so that a token set after the app loads
+ *   is picked up immediately.
+ */
+export function getApiToken(): string | null {
+  if (typeof localStorage === 'undefined') {
+    return null;
   }
-
-  try {
-    const resp = await fetch('/config.json');
-    if (!resp.ok) {
-      return null;
-    }
-    const config = (await resp.json()) as { apiToken?: unknown };
-    if (config.apiToken && typeof config.apiToken === 'string') {
-      return config.apiToken;
-    }
-  } catch {
-    // Ignore: /config.json is optional in dev and may not exist.
-  }
-
-  return null;
+  return localStorage.getItem(LS_TOKEN_KEY);
 }
 
-export async function getApiToken(): Promise<string | null> {
-  if (!apiTokenPromise) {
-    apiTokenPromise = fetchApiToken();
-  }
-  return apiTokenPromise;
-}
-
+/**
+ * Persist an API token to localStorage and use it for subsequent requests.
+ */
 export function setApiToken(token: string): void {
-  apiTokenPromise = Promise.resolve(token);
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem(LS_TOKEN_KEY, token);
+  }
+}
+
+/**
+ * Remove the persisted API token from localStorage.
+ */
+export function clearApiToken(): void {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(LS_TOKEN_KEY);
   }
 }
 
@@ -53,7 +49,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     Object.assign(headers, optsHeaders);
   }
 
-  const token = await getApiToken();
+  const token = getApiToken();
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
