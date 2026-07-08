@@ -62,7 +62,10 @@ export function useLogs() {
     error.value = null;
     try {
       const blob = await downloadLogs();
-      const url = URL.createObjectURL(blob);
+      const text = await blob.text();
+      const sanitized = maskSensitive(text);
+      const sanitizedBlob = new Blob([sanitized], { type: blob.type || 'application/jsonl' });
+      const url = URL.createObjectURL(sanitizedBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `logs-${new Date().toISOString()}.jsonl`;
@@ -71,6 +74,17 @@ export function useLogs() {
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Download failed';
     }
+  }
+
+  function maskSensitive(text: string): string {
+    // Mask common key-value patterns (api_key, apikey, api-key, token, secret, password)
+    // and BasicAuth Bearer headers. Keep the key/prefix visible; replace the value.
+    return text
+      .replace(
+        /((?:api[_-]?key|token|secret|password)\s*[:=]\s*)[^\n"']*/gi,
+        '$1***REDACTED***'
+      )
+      .replace(/(Authorization:\s*Bearer\s+)[^\n]+/gi, '$1***REDACTED***');
   }
 
   const filteredLogs = computed(() => {
