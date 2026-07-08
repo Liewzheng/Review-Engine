@@ -33,6 +33,7 @@ related:
 │  ├── repo.rs      POST/GET repo health scan               │
 │  ├── config.rs    GET config/schema, POST validate         │
 │  ├── system.rs    health, version, experts list            │
+│  ├── queue.rs     queue stats, tasks, pause/resume/retry   │
 │  └── types.rs     TaskStatus, PaginatedResponse 等         │
 │                                                           │
 │  src/server/task_queue.rs   异步任务队列 + TaskStore      │
@@ -219,7 +220,146 @@ Response 422:
 
 ---
 
-### 4. 系统
+### 4. 队列监控（Queue Monitor）
+
+队列相关接口挂载于 `/api/v1/queue/`，供 Queue Monitor 页面使用。
+
+#### `GET /api/v1/queue/stats`
+
+返回队列实时统计。
+
+```
+Response 200:
+{
+  "active": 0,
+  "queued": 0,
+  "failed": 0,
+  "totalDepth": 0,
+  "maxConcurrent": 8,
+  "queueCapacity": 16,
+  "failedLast24h": 0,
+  "totalLast24h": 0,
+  "isPaused": false
+}
+```
+
+#### `GET /api/v1/queue/tasks`
+
+分页列出任务，支持按状态过滤。
+
+```
+Query:
+  ?status=failed&page=1&per_page=50
+
+status: running | queued | failed | completed
+
+Response 200:
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "mrTitle": "...",
+      "project": "...",
+      "repository": "...",
+      "status": "failed",
+      "progress": 85,
+      "expertName": "Security",
+      "elapsedMs": 12345,
+      "createdAt": "2026-06-26T12:00:00Z",
+      "startedAt": "2026-06-26T12:00:01Z",
+      "errorMessage": "..."
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 50
+}
+```
+
+Default `per_page`: 50, max `per_page`: 100.
+
+#### `DELETE /api/v1/queue/tasks/{task_id}`
+
+取消处于 `pending` 或 `running` 状态的任务。
+
+```
+Response 200:
+{
+  "status": "deleted"
+}
+
+Response 400:
+{
+  "error": "task not found or cannot be cancelled"
+}
+```
+
+#### `POST /api/v1/queue/tasks/{task_id}/retry`
+
+将失败任务重新加入队列。
+
+```
+Response 200:
+{
+  "status": "retried"
+}
+
+Response 400:
+{
+  "error": "task not found or not in failed state"
+}
+```
+
+#### `POST /api/v1/queue/pause`
+
+暂停队列：新任务保持 pending 但不会被启动。
+
+```
+Response 200:
+{
+  "status": "paused"
+}
+```
+
+#### `POST /api/v1/queue/resume`
+
+恢复队列。
+
+```
+Response 200:
+{
+  "status": "resumed"
+}
+```
+
+#### `POST /api/v1/queue/max-concurrent`
+
+设置最大并发任务数。
+
+```
+Request:
+{
+  "max_concurrent": 4
+}
+
+Response 200:
+{
+  "maxConcurrent": 4
+}
+```
+
+所有队列接口在未初始化 task store 时返回 `503`：
+
+```
+Response 503:
+{
+  "error": "task store not initialized"
+}
+```
+
+---
+
+### 5. 系统
 
 #### `GET /api/v1/experts`
 
@@ -262,7 +402,7 @@ Response 200:
 
 ---
 
-### 5. 实时推送（SSE）
+### 6. 实时推送（SSE）
 
 #### `GET /api/v1/events`
 
@@ -306,10 +446,11 @@ Client                    Server                        Core
 | `src/server/api/review.rs` | review CRUD endpoints | 220 |
 | `src/server/api/config.rs` | config + schema + validate | 70 |
 | `src/server/api/system.rs` | experts + version | 40 |
+| `src/server/api/queue.rs` | queue stats, tasks, pause/resume/retry | 227 |
 | `src/server/api/types.rs` | TaskStatus, ReviewRequest 等 | 70 |
 | `src/server/task_queue.rs` | 内存 TaskStore（`Arc<RwLock<HashMap>>`） | 100 |
 | `src/server/auth.rs` | Bearer token 验证中间件 | ~30 |
-| **合计** | | **~550 行** |
+| **合计** | | **~777 行** |
 
 ---
 
@@ -337,7 +478,7 @@ Client                    Server                        Core
 
 ---
 
-## 6. 认证策略
+## 7. 认证策略
 
 ### 原则：按网络边界自动决定安全等级
 
@@ -382,6 +523,13 @@ review-engine serve --bind 0.0.0.0 --api-token $(review-engine generate-token)
 | `GET /api/v1/reviews` | 不认证 | **认证** | 可能泄漏代码 diff |
 | `GET /api/v1/reviews/:id` | 不认证 | **认证** | 同上 |
 | `GET /api/v1/config` | 不认证 | **认证** | 可能泄漏敏感配置 |
+| `GET /api/v1/queue/stats` | 不认证 | 不认证 | 聚合统计，无敏感信息 |
+| `GET /api/v1/queue/tasks` | 不认证 | **认证** | 可能包含 MR 标题与仓库信息 |
+| `DELETE /api/v1/queue/tasks/:id` | 不认证 | **认证** | 控制任务状态 |
+| `POST /api/v1/queue/tasks/:id/retry` | 不认证 | **认证** | 重新消耗 LLM token |
+| `POST /api/v1/queue/pause` | 不认证 | **认证** | 控制队列状态 |
+| `POST /api/v1/queue/resume` | 不认证 | **认证** | 控制队列状态 |
+| `POST /api/v1/queue/max-concurrent` | 不认证 | **认证** | 修改并发配置 |
 
 ### 请求方式
 
