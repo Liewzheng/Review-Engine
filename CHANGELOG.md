@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.7.6] - 2026-07-08
+
+### Fixed
+- **Frontend navigation**: removed the broken `<Transition name="page" mode="out-in">` wrapper around `<router-view>` in `App.vue` that caused sidebar navigation (e.g., Dashboard → Config) to leave the old component rendered indefinitely.
+
 ## [0.7.5] - 2026-07-08
 
 ### Added
