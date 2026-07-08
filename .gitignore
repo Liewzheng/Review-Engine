@@ -11,7 +11,7 @@ screenshot*.png
 screenshot-*.png
 queue-*.png
 backend-*.log
-test-report*.md
+*test-report*.md
 frontend-test-cases*.xlsx
 ux-review-*.md
 ux-review-*.xlsx
