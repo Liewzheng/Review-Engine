@@ -12,7 +12,7 @@ screenshot-*.png
 queue-*.png
 backend-*.log
 test-report*.md
-frontend-test-cases.xlsx
+frontend-test-cases*.xlsx
 ux-review-*.md
 ux-review-*.xlsx
 plan*.md
