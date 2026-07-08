@@ -27,6 +27,8 @@ pub struct TeamReport {
     pub errors: Vec<String>,
     pub metrics: Vec<ExpertMetrics>,
     pub request_id: String,
+    /// Result of the lead consolidator, including confidence filtering,
+    /// deduplication, conflict detection, and scoring.
     pub consolidated: Option<crate::team::lead_consolidator::ConsolidationResult>,
 }
 

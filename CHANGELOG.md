@@ -8,9 +8,13 @@
 - **Orchestrator**: wired the existing lead consolidator into the review pipeline; results are exposed in `TeamReport.consolidated`.
 - **Evidence validation**: added `validate_findings()` in `src/output/parser.rs` to drop hallucinated findings whose file or line does not exist in the diff.
 
+### Fixed
+- **Evidence validation**: `validate_findings()` now correctly rejects pure-deletion hunks, validates both `line` and `line_end`, and handles empty diff inputs.
+
 ### Changed
 - **Prompts**: `REVIEW_SYSTEM_TEMPLATE` now instructs experts to report only issues in added/modified lines and to label low-confidence findings as speculative notes.
 - **Prompts**: `REVIEW_USER_TEMPLATE` now explains `+`/`-`/context lines before the diff block.
+- **Docs**: added a "Reducing false positives" section to `README.md` documenting the new `[report]` config options.
 
 ## [0.7.2] - 2026-07-08
 
