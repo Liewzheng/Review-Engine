@@ -4,7 +4,7 @@
 //! CRUD operations for multi-provider management.
 
 use axum::{
-    extract::{Path, State},
+    extract::{rejection::JsonRejection, Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
@@ -54,11 +54,11 @@ async fn get_providers(State(state): State<Arc<AppState>>) -> Json<serde_json::V
 #[serde(rename_all = "camelCase")]
 pub struct AddProviderRequest {
     pub provider: String,
-    #[serde(default)]
+    #[serde(default, alias = "defaultModel")]
     pub model: String,
     #[serde(default)]
     pub api_key: String,
-    #[serde(default)]
+    #[serde(default, alias = "apiBaseUrl")]
     pub api_base: String,
     #[serde(default = "default_add_max_tokens")]
     pub max_tokens: u32,
@@ -73,7 +73,21 @@ fn default_add_temperature() -> f32 {
     0.7
 }
 
-async fn add_provider(State(state): State<Arc<AppState>>, Json(body): Json<AddProviderRequest>) -> impl IntoResponse {
+async fn add_provider(
+    State(state): State<Arc<AppState>>,
+    body: Result<Json<AddProviderRequest>, JsonRejection>,
+) -> impl IntoResponse {
+    let Json(body) = match body {
+        Ok(json) => json,
+        Err(rejection) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": rejection.body_text() })),
+            )
+                .into_response();
+        }
+    };
+
     // Validate required fields
     if body.provider.is_empty() {
         return (
@@ -210,11 +224,11 @@ async fn delete_provider(State(state): State<Arc<AppState>>, Path(id): Path<Stri
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProviderRequest {
-    #[serde(default)]
+    #[serde(default, alias = "defaultModel")]
     pub model: String,
     #[serde(default)]
     pub api_key: String,
-    #[serde(default)]
+    #[serde(default, alias = "apiBaseUrl")]
     pub api_base: String,
     #[serde(default = "default_add_max_tokens")]
     pub max_tokens: u32,
@@ -225,8 +239,19 @@ pub struct UpdateProviderRequest {
 async fn update_provider(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Json(body): Json<UpdateProviderRequest>,
+    body: Result<Json<UpdateProviderRequest>, JsonRejection>,
 ) -> impl IntoResponse {
+    let Json(body) = match body {
+        Ok(json) => json,
+        Err(rejection) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": rejection.body_text() })),
+            )
+                .into_response();
+        }
+    };
+
     let (provider, idx_str) = match id.rsplit_once('-') {
         Some((p, i)) => (p.to_string(), i.to_string()),
         None => {

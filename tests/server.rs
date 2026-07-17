@@ -112,3 +112,163 @@ async fn metrics_endpoint() {
         body
     );
 }
+
+// ─── LLM Provider CRUD ────────────────────────────────────────────
+
+/// The frontend sends `apiBaseUrl`/`defaultModel`; the backend must map them
+/// onto `api_base`/`model` via serde aliases. The primary camelCase names
+/// (`apiBase`/`model`) must keep working as well.
+#[test]
+fn provider_requests_accept_frontend_field_aliases() {
+    use review_engine::server::api::llm::{AddProviderRequest, UpdateProviderRequest};
+
+    let add: AddProviderRequest = serde_json::from_value(serde_json::json!({
+        "provider": "openai",
+        "apiKey": "sk-test",
+        "apiBaseUrl": "https://llm.example.test/v1",
+        "defaultModel": "gpt-4o-test",
+        "maxTokens": 8192,
+        "temperature": 0.3,
+    }))
+    .expect("AddProviderRequest should accept frontend field names");
+    assert_eq!(add.provider, "openai");
+    assert_eq!(add.api_key, "sk-test");
+    assert_eq!(add.api_base, "https://llm.example.test/v1");
+    assert_eq!(add.model, "gpt-4o-test");
+    assert_eq!(add.max_tokens, 8192);
+    assert!((add.temperature - 0.3).abs() < f32::EPSILON);
+
+    let add_primary: AddProviderRequest = serde_json::from_value(serde_json::json!({
+        "provider": "openai",
+        "apiKey": "sk-test",
+        "apiBase": "https://primary.example.test/v1",
+        "model": "gpt-4o-primary",
+    }))
+    .expect("AddProviderRequest should keep its primary camelCase names");
+    assert_eq!(add_primary.api_base, "https://primary.example.test/v1");
+    assert_eq!(add_primary.model, "gpt-4o-primary");
+
+    let update: UpdateProviderRequest = serde_json::from_value(serde_json::json!({
+        "apiBaseUrl": "https://update.example.test/v1",
+        "defaultModel": "gpt-4o-update",
+    }))
+    .expect("UpdateProviderRequest should accept frontend field names");
+    assert_eq!(update.api_base, "https://update.example.test/v1");
+    assert_eq!(update.model, "gpt-4o-update");
+}
+
+#[tokio::test]
+async fn add_provider_accepts_frontend_field_names() {
+    let port = find_free_port();
+    let _guard = spawn_server(port);
+    wait_for_server(port).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/v1/llm/providers", port))
+        .json(&serde_json::json!({
+            "provider": "openai",
+            "apiKey": "sk-test",
+            "apiBaseUrl": "https://llm.example.test/v1",
+            "defaultModel": "gpt-4o-test",
+        }))
+        .send()
+        .await
+        .expect("failed to POST /api/v1/llm/providers");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::CREATED,
+        "POST /api/v1/llm/providers returned {}",
+        resp.status()
+    );
+    let body: serde_json::Value = resp.json().await.expect("POST provider body is not JSON");
+    // `defaultModel` must land in `model` — without the alias this would be "".
+    assert_eq!(body["model"], "gpt-4o-test");
+    assert_eq!(body["configured"], true);
+
+    // The provider must be listed afterwards and marked as configured.
+    let resp = reqwest::get(format!("http://127.0.0.1:{}/api/v1/llm/providers", port))
+        .await
+        .expect("failed to GET /api/v1/llm/providers");
+    assert!(resp.status().is_success(), "GET providers returned {}", resp.status());
+    let body: serde_json::Value = resp.json().await.expect("GET providers body is not JSON");
+    let items = body["items"].as_array().expect("items is not an array");
+    let added = items
+        .iter()
+        .find(|item| item["name"] == "openai")
+        .expect("added provider missing from GET /providers");
+    assert_eq!(added["configured"], true);
+}
+
+#[tokio::test]
+async fn add_provider_missing_provider_field_returns_400_json() {
+    let port = find_free_port();
+    let _guard = spawn_server(port);
+    wait_for_server(port).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/v1/llm/providers", port))
+        .json(&serde_json::json!({
+            "apiKey": "sk-test",
+        }))
+        .send()
+        .await
+        .expect("failed to POST /api/v1/llm/providers");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::BAD_REQUEST,
+        "expected 400 for a body missing `provider`, got {}",
+        resp.status()
+    );
+    let body: serde_json::Value = resp.json().await.expect("400 response body should be JSON");
+    let error = body["error"].as_str().expect("400 body must contain an `error` string");
+    assert!(
+        error.contains("provider"),
+        "error message should mention the missing field: {}",
+        error
+    );
+}
+
+#[tokio::test]
+async fn update_provider_accepts_frontend_field_names() {
+    let port = find_free_port();
+    let _guard = spawn_server(port);
+    wait_for_server(port).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://127.0.0.1:{}/api/v1/llm/providers", port))
+        .json(&serde_json::json!({
+            "provider": "openai",
+            "apiKey": "sk-test",
+            "defaultModel": "gpt-4o-test",
+        }))
+        .send()
+        .await
+        .expect("failed to POST /api/v1/llm/providers");
+    assert_eq!(resp.status(), reqwest::StatusCode::CREATED);
+    let body: serde_json::Value = resp.json().await.expect("POST provider body is not JSON");
+    let id = body["id"].as_str().expect("POST response missing `id`").to_string();
+
+    let resp = client
+        .put(format!("http://127.0.0.1:{}/api/v1/llm/providers/{}", port, id))
+        .json(&serde_json::json!({
+            "apiBaseUrl": "https://llm-update.example.test/v1",
+            "defaultModel": "gpt-4o-updated",
+        }))
+        .send()
+        .await
+        .expect("failed to PUT /api/v1/llm/providers/{id}");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "PUT /api/v1/llm/providers/{} returned {}",
+        id,
+        resp.status()
+    );
+    let body: serde_json::Value = resp.json().await.expect("PUT provider body is not JSON");
+    assert_eq!(body["status"], "updated");
+    // `defaultModel` must land in `model` — without the alias it would stay "gpt-4o-test".
+    assert_eq!(body["model"], "gpt-4o-updated");
+}
