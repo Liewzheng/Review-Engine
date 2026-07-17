@@ -16,6 +16,9 @@
   - `experts::ScoreItem` gains a `confidence: Option<u8>` field (LLM-reported confidence 0–10; `None` defaults to 5 when mapped to `Finding`).
   - `build_output_from_aggregated` gains a `dropped_findings: Vec<DroppedFinding>` parameter and `RepoReviewOutput` gains a `dropped_findings` field (serde default keeps old JSON deserializable).
 
+### Fixed
+- **TestCoverage CI detection read files repeatedly**: `src/repo/experts/test_coverage.rs` called `std::fs::read_to_string` up to three times per candidate file (twice in the YAML-branch checks, once in the final `test` content check). The content is now read once into a local `Option<String>` and reused via `content.as_deref().map_or(false, ...)`, with the detection semantics unchanged (path hit for `.gitlab-ci.yml` / `.github/workflows/` / `Jenkinsfile`, or a YAML file whose content contains both "test" and "script"; content must contain "test" either way).
+
 ### Removed
 - **Deprecated repo-scoring dead code**: deleted `src/scoring/repo.rs` (`score_repository`, `RepoScore`, `RiskItem`, scoring `ActionItem`) and the uncalled `analyze()` aggregation in `src/repo/analysis.rs` together with its only-consumer types (`RepoAnalysis`, `FileAnalysis`, `LanguageBreakdown`, `find_large_files`, `build_language_breakdown`). The still-used security-pattern scanning (`SecurityFinding`, `scan_security_patterns`) remains in `src/repo/analysis.rs`.
 - **Unused repo-review prompt templates**: deleted `REPO_REVIEW_SYSTEM_TEMPLATE` / `REPO_REVIEW_USER_TEMPLATE` and `PromptEngine::build_repo_review_prompt`, which were only referenced by their own unit tests; the repo-review pipeline uses the architecture-lead and code-quality templates instead.

@@ -131,17 +131,7 @@ impl RepoExpert for TestCoverage {
         };
 
         // Layer 3: CI test presence
-        let has_ci_test = ctx.entries.iter().any(|e| {
-            let p = &e.path;
-            // Accept both .gitlab-ci.yml and ./ci/some.yaml patterns
-            let is_ci = p.contains(".gitlab-ci.yml")
-                || p.contains(".github/workflows/")
-                || p.contains("Jenkinsfile")
-                || (p.ends_with(".yaml") || p.ends_with(".yml"))
-                    && std::fs::read_to_string(p).ok().map_or(false, |c| c.contains("test"))
-                    && std::fs::read_to_string(p).ok().map_or(false, |c| c.contains("script"));
-            is_ci && std::fs::read_to_string(p).ok().map_or(false, |c| c.contains("test"))
-        });
+        let has_ci_test = ctx.entries.iter().any(|e| is_ci_test_file(&e.path));
 
         let mut score: i32 = 0;
         if has_dev_deps {
@@ -212,5 +202,67 @@ impl RepoExpert for TestCoverage {
             ),
             details,
         })
+    }
+}
+
+/// Whether a file is a CI configuration that runs tests.
+///
+/// A file is a CI candidate when its path matches a well-known CI location
+/// (`.gitlab-ci.yml`, `.github/workflows/`, `Jenkinsfile`), or when it is a
+/// YAML file whose content mentions both "test" and "script". Either way the
+/// content must mention "test". The file is read at most once.
+fn is_ci_test_file(path: &str) -> bool {
+    let content = std::fs::read_to_string(path).ok();
+    // Accept both .gitlab-ci.yml and ./ci/some.yaml patterns
+    let is_ci = path.contains(".gitlab-ci.yml")
+        || path.contains(".github/workflows/")
+        || path.contains("Jenkinsfile")
+        || (path.ends_with(".yaml") || path.ends_with(".yml"))
+            && content.as_deref().map_or(false, |c| c.contains("test"))
+            && content.as_deref().map_or(false, |c| c.contains("script"));
+    is_ci && content.as_deref().map_or(false, |c| c.contains("test"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_file(dir: &tempfile::TempDir, name: &str, content: &str) -> String {
+        let path = dir.path().join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, content).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn yaml_with_test_and_script_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_file(&dir, "ci.yaml", "script:\n  - cargo test\n");
+        assert!(is_ci_test_file(&path));
+    }
+
+    #[test]
+    fn yaml_with_only_test_is_not_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_file(&dir, "ci.yml", "stages:\n  - test\n");
+        assert!(!is_ci_test_file(&path));
+    }
+
+    #[test]
+    fn yaml_with_only_script_is_not_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = write_file(&dir, "ci.yaml", "script:\n  - cargo build\n");
+        assert!(!is_ci_test_file(&path));
+    }
+
+    #[test]
+    fn known_ci_path_only_requires_test_in_content() {
+        let dir = tempfile::tempdir().unwrap();
+        // Path hit: the "script" requirement does not apply, "test" suffices.
+        let path = write_file(&dir, ".gitlab-ci.yml", "stages:\n  - test\n");
+        assert!(is_ci_test_file(&path));
+        // But content without "test" is still rejected.
+        let path = write_file(&dir, ".github/workflows/ci.yml", "on: push\njobs: {}\n");
+        assert!(!is_ci_test_file(&path));
     }
 }
