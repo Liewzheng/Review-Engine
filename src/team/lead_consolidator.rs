@@ -232,7 +232,7 @@ impl ConsolidatorConfig {
         if total_high > 0 {
             parts.push(format!("{} high", total_high));
         }
-        let remaining = total_findings - total_critical - total_high;
+        let remaining = total_findings.saturating_sub(total_critical + total_high);
         if remaining > 0 {
             parts.push(format!("{} other issues", remaining));
         }

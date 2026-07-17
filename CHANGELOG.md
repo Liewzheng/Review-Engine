@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.7.9] - 2026-07-17
+
+### Added
+- **`repo-review --config` now takes effect**: the resolved `AppConfig` is passed through `run_repo_review_local_or_enhanced` into both `run_local_repo_review` and `run_repo_review`, populating `RepoContext.config` (previously hardcoded `None`). Language profiles from the config now reach the static and LLM repo experts, and the config is validated up front like other commands (a missing `--config` path fails with `config file not found`).
+- **True concurrency in repo-review Pass 2**: the chunk-based `CodeQuality` evaluations now run as concurrent futures joined via `futures::future::join_all` (previously the loop acquired a semaphore permit and then awaited each chunk sequentially). Concurrency is bounded by a semaphore sized from `max_concurrent_llm_calls` (default 6), per-chunk failures still only log a warning without aborting the review, results are collected in chunk order, and progress updates use a completion counter so the percentage increases monotonically.
+- **repo-review reuses the lead consolidator**: `CodeQuality` chunk findings are mapped to the standard `Finding` model (confidence parsed from the LLM output, defaulting to 5; the code-quality template now requests a `confidence` field) and, after the repo-specific `filter_noise`, consolidated through `ConsolidatorConfig::consolidate` (confidence downgrade/drop, deduplication, conflict detection) instead of the aggregator's `merge_deduplicate`. The `MAX_FINDINGS = 20` truncation, the cross-expert dedup pass, and the LOC-weighted chunk scoring are unchanged, and `RepoReviewOutput` is structurally unchanged. The consolidator's TL;DR generation now uses a saturating subtraction, fixing a debug-build panic when dedup/drop removed critical/high findings.
+- **Verification pass supports a no-hunk mode and runs for repo-review**: when `verify_findings` is called with an empty diff-file list, the prompt carries no diff-hunk section, the file list is derived from the findings' referenced files, and the system-prompt context wording is adapted (keep/drop semantics are unchanged). `run_repo_review` now honors `[report] verification_pass` / `verification_max_file_bytes`: after Pass 2 and before aggregation, the standard code-quality findings are re-checked against the scanned files' full contents (fail-open, as in the review pipeline). Dropped findings are stripped from the chunk scores, exposed as `dropped_findings` in the JSON output (serde-compatible default), and listed in a "Dropped by verification" appendix (with the checked-count summary) at the end of the Markdown report.
+- **Shared context-boundary prompt rules**: the `CONTEXT BOUNDARY` paragraph of `REVIEW_SYSTEM_TEMPLATE` is extracted into a shared `CONTEXT_BOUNDARY_BLOCK` (the rendered review template is byte-identical), and a repo-adapted `CONTEXT_BOUNDARY_BLOCK_REPO` ("you can only see the files provided to you; do not assert the content of files not provided; downgrade such claims to `note` with low confidence and an explicit `Assumption:`") is injected into both the `CODE_QUALITY` and `ARCHITECTURE_LEAD` system templates.
+
+### Changed (breaking)
+- **Crate-internal API breakage** (allowed under 0.x semver; these items are internal to the crate and not part of a stable public interface):
+  - `run_repo_review` and `run_local_repo_review` each gain a required `config: Option<Arc<AppConfig>>` parameter (pass `None` to keep the previous behavior).
+  - `render_repo_review_output` gains a required `verification_enabled: bool` parameter controlling the "Dropped by verification" appendix in Markdown output.
+  - `experts::ScoreItem` gains a `confidence: Option<u8>` field (LLM-reported confidence 0–10; `None` defaults to 5 when mapped to `Finding`).
+  - `build_output_from_aggregated` gains a `dropped_findings: Vec<DroppedFinding>` parameter and `RepoReviewOutput` gains a `dropped_findings` field (serde default keeps old JSON deserializable).
+
+### Removed
+- **Deprecated repo-scoring dead code**: deleted `src/scoring/repo.rs` (`score_repository`, `RepoScore`, `RiskItem`, scoring `ActionItem`) and the uncalled `analyze()` aggregation in `src/repo/analysis.rs` together with its only-consumer types (`RepoAnalysis`, `FileAnalysis`, `LanguageBreakdown`, `find_large_files`, `build_language_breakdown`). The still-used security-pattern scanning (`SecurityFinding`, `scan_security_patterns`) remains in `src/repo/analysis.rs`.
+- **Unused repo-review prompt templates**: deleted `REPO_REVIEW_SYSTEM_TEMPLATE` / `REPO_REVIEW_USER_TEMPLATE` and `PromptEngine::build_repo_review_prompt`, which were only referenced by their own unit tests; the repo-review pipeline uses the architecture-lead and code-quality templates instead.
+
 ## [0.7.8] - 2026-07-17
 
 ### Added

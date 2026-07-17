@@ -17,6 +17,10 @@ pub struct RepoReviewOutput {
     pub risk_categories: Vec<RiskCategory>,
     pub action_items: Vec<ActionItem>,
     pub conclusion: ReportConclusion,
+    /// Code-quality findings dropped by the optional verification pass, with
+    /// reasons. Empty when the pass was disabled or kept everything.
+    #[serde(default)]
+    pub dropped_findings: Vec<crate::team::verifier::DroppedFinding>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -274,6 +278,7 @@ fn build_output(scores: &[ExpertScore], stats: &crate::repo::RepoStats) -> RepoR
         risk_categories,
         action_items,
         conclusion,
+        dropped_findings: Vec::new(),
     }
 }
 
@@ -281,6 +286,7 @@ fn build_output(scores: &[ExpertScore], stats: &crate::repo::RepoStats) -> RepoR
 fn build_output_from_aggregated(
     agg: &crate::repo::experts::aggregator::AggregatedResult,
     stats: &crate::repo::RepoStats,
+    dropped_findings: Vec<crate::team::verifier::DroppedFinding>,
 ) -> RepoReviewOutput {
     let (health_score, risk_level) = experts::weighted_total(&agg.scores);
     let conv = convert_scores(&agg.scores);
@@ -316,6 +322,7 @@ fn build_output_from_aggregated(
         risk_categories,
         action_items,
         conclusion,
+        dropped_findings,
     }
 }
 
@@ -324,6 +331,7 @@ pub async fn run_local_repo_review(
     local_path: &str,
     progress_map: Option<ProgressMap>,
     review_id: &str,
+    config: Option<Arc<AppConfig>>,
 ) -> Result<RepoReviewOutput> {
     // Initialize progress
     if let Some(ref map) = progress_map {
@@ -351,7 +359,7 @@ pub async fn run_local_repo_review(
         entries,
         stats,
         llm_configs: vec![],
-        config: None,
+        config,
     };
 
     // Run static experts
@@ -386,6 +394,7 @@ pub async fn run_repo_review(
     entries: &[FileEntry],
     progress_map: Option<ProgressMap>,
     review_id: &str,
+    config: Option<Arc<AppConfig>>,
 ) -> Result<RepoReviewOutput> {
     // Initialize progress
     if let Some(ref map) = progress_map {
@@ -403,7 +412,7 @@ pub async fn run_repo_review(
         entries: entries.to_vec(),
         stats,
         llm_configs: llm_configs.to_vec(),
-        config: None,
+        config,
     };
     let mut scores = run_static_experts(&ctx).await;
 
@@ -418,6 +427,7 @@ pub async fn run_repo_review(
     }
 
     // ── 3-pass LLM architecture ──
+    let mut dropped_findings: Vec<crate::team::verifier::DroppedFinding> = Vec::new();
     if !llm_configs.is_empty() {
         // ── Pass 1: Architecture Lead ──
         if let Some(ref map) = progress_map {
@@ -452,61 +462,93 @@ pub async fn run_repo_review(
             }
         }
 
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(6));
-        let cq = llm_experts::CodeQuality;
+        let max_concurrent = ctx
+            .config
+            .as_deref()
+            .and_then(|c| c.max_concurrent_llm_calls)
+            .unwrap_or(6);
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+        let completed_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let total_chunks = chunks.len();
+        let scanner_ref = &scanner;
 
-        for (i, chunk) in chunks.iter().enumerate() {
-            let _permit = semaphore.clone().acquire_owned().await?;
-            tracing::info!(
-                "CodeQuality chunk {}/{}: {} ({} files, {} LOC)",
-                i + 1,
-                chunks.len(),
-                chunk.module,
-                chunk.files.len(),
-                chunk.total_loc
-            );
+        // Evaluate chunks concurrently (bounded by the semaphore), one future
+        // per chunk. `join_all` polls them together and returns results in
+        // input order, keeping chunk scores deterministic.
+        let tasks: Vec<_> = chunks
+            .iter()
+            .enumerate()
+            .map(|(i, chunk)| {
+                let semaphore = semaphore.clone();
+                let completed_count = completed_count.clone();
+                let progress_map = progress_map.clone();
+                let review_id = review_id.to_string();
+                let llm_configs = llm_configs.to_vec();
+                let config = ctx.config.clone();
+                async move {
+                    let _permit = match semaphore.acquire_owned().await {
+                        Ok(permit) => permit,
+                        Err(e) => {
+                            tracing::warn!("Chunk {} semaphore acquire failed: {:?}", chunk.module, e);
+                            return None;
+                        }
+                    };
+                    tracing::info!(
+                        "CodeQuality chunk {}/{}: {} ({} files, {} LOC)",
+                        i + 1,
+                        total_chunks,
+                        chunk.module,
+                        chunk.files.len(),
+                        chunk.total_loc
+                    );
 
-            // Build per-chunk RepoContext
-            let chunk_entries: Vec<FileEntry> = entries
-                .iter()
-                .filter(|e| chunk.files.contains(&e.path))
-                .cloned()
-                .collect();
-            let chunk_stats = scanner.compute_stats(&chunk_entries);
-            let chunk_ctx = RepoContext {
-                entries: chunk_entries,
-                stats: chunk_stats,
-                llm_configs: llm_configs.to_vec(),
-                config: None,
-            };
+                    // Build per-chunk RepoContext
+                    let chunk_entries: Vec<FileEntry> = entries
+                        .iter()
+                        .filter(|e| chunk.files.contains(&e.path))
+                        .cloned()
+                        .collect();
+                    let chunk_stats = scanner_ref.compute_stats(&chunk_entries);
+                    let chunk_ctx = RepoContext {
+                        entries: chunk_entries,
+                        stats: chunk_stats,
+                        llm_configs,
+                        config,
+                    };
 
-            match cq.evaluate(&chunk_ctx, Some(llm_client)).await {
-                Ok(s) => {
-                    tracing::info!("Chunk {} scored {}", chunk.module, s.score);
-                    scores.push(s);
-                }
-                Err(e) => tracing::warn!("Chunk {} failed: {:?}", chunk.module, e),
-            }
+                    let result = match llm_experts::CodeQuality.evaluate(&chunk_ctx, Some(llm_client)).await {
+                        Ok(s) => {
+                            tracing::info!("Chunk {} scored {}", chunk.module, s.score);
+                            Some(s)
+                        }
+                        Err(e) => {
+                            tracing::warn!("Chunk {} failed: {:?}", chunk.module, e);
+                            None
+                        }
+                    };
 
-            // Update progress per chunk
-            if let Some(ref map) = progress_map {
-                if let Ok(mut p) = map.write() {
-                    if let Some(progress) = p.get_mut(review_id) {
-                        let pct = 0.4 + (i + 1) as f64 / chunks.len() as f64 * 0.5;
-                        progress.set_stage(
-                            "llm_enhance",
-                            pct,
-                            format!(
-                                "Pass 2: CodeQuality chunk {}/{} ({})",
-                                i + 1,
-                                chunks.len(),
-                                chunk.module
-                            ),
-                        );
+                    // Update progress per completed chunk
+                    let done = completed_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if let Some(ref map) = progress_map {
+                        if let Ok(mut p) = map.write() {
+                            if let Some(progress) = p.get_mut(review_id.as_str()) {
+                                let pct = 0.4 + done as f64 / total_chunks as f64 * 0.5;
+                                progress.set_stage(
+                                    "llm_enhance",
+                                    pct,
+                                    format!("Pass 2: CodeQuality chunk {}/{} ({})", done, total_chunks, chunk.module),
+                                );
+                            }
+                        }
                     }
+
+                    result
                 }
-            }
-        }
+            })
+            .collect();
+
+        let chunk_results: Vec<Option<ExpertScore>> = futures::future::join_all(tasks).await;
+        scores.extend(chunk_results.into_iter().flatten());
 
         // Complete llm_enhance stage
         if let Some(ref map) = progress_map {
@@ -516,16 +558,97 @@ pub async fn run_repo_review(
                 }
             }
         }
+
+        // ── Optional verification pass (no-hunk mode) ──
+        // Re-check the code_quality findings (mapped to the standard Finding
+        // model) against the full file contents before Pass 3 consolidation.
+        // Fail-open: `verify_findings` never aborts the review.
+        let verification_enabled = ctx.config.as_deref().is_some_and(|c| c.report.verification_pass);
+        if verification_enabled {
+            let max_file_bytes = ctx
+                .config
+                .as_deref()
+                .map(|c| c.report.verification_max_file_bytes)
+                .unwrap_or(20000);
+            let items: Vec<experts::ScoreItem> = scores
+                .iter()
+                .filter(|s| s.expert_name == "code_quality")
+                .flat_map(|s| crate::repo::experts::aggregator::filter_noise(s.details.clone()))
+                .collect();
+            if !items.is_empty() {
+                let findings: Vec<Finding> = items.iter().map(experts::score_item_to_finding).collect();
+                let checked = findings.len();
+                let mut reports = vec![ExpertReport {
+                    expert_name: "code_quality".to_string(),
+                    findings,
+                    markdown: String::new(),
+                    raw_llm_response: String::new(),
+                }];
+                let dropped =
+                    crate::team::verifier::verify_findings(&mut reports, &[], local_path, llm_configs, max_file_bytes)
+                        .await;
+                let kept = reports.into_iter().next().map(|r| r.findings).unwrap_or_default();
+                tracing::info!(
+                    "Verification pass: checked {} findings, dropped {}",
+                    checked,
+                    dropped.len()
+                );
+                if !dropped.is_empty() {
+                    strip_dropped_from_scores(&mut scores, &kept);
+                }
+                dropped_findings = dropped;
+            }
+        }
     }
 
     // ── Pass 3: Aggregator ──
-    let aggregated = crate::repo::experts::aggregator::aggregate(scores);
-    let output = build_output_from_aggregated(&aggregated, &ctx.stats);
+    let aggregated = crate::repo::experts::aggregator::aggregate(scores, ctx.config.as_deref());
+    let output = build_output_from_aggregated(&aggregated, &ctx.stats, dropped_findings);
 
     // Mark progress complete
     crate::progress::complete_repo_progress(progress_map.as_ref(), review_id);
 
     Ok(output)
+}
+
+/// Remove verification-dropped findings from the code_quality chunk scores.
+///
+/// `kept` holds the surviving standard findings, matched against the chunk
+/// `ScoreItem`s by (file, title, severity, category), where `title`
+/// corresponds to `ScoreItem.message` and `file` to `ScoreItem.file` (`None`
+/// mapped to `""`). Items are mapped through `score_item_to_finding` so both
+/// sides share the same severity/category normalisation; the extended key
+/// keeps same-file/same-title findings with different severities distinct.
+/// Matching is count-based, so identical findings reported by multiple
+/// chunks survive independently. Items never sent to the verifier (e.g.
+/// noise pre-filtered out of the standard findings) are also removed here;
+/// the aggregator's `filter_noise` would drop them anyway.
+fn strip_dropped_from_scores(scores: &mut [ExpertScore], kept: &[Finding]) {
+    let mut remaining: std::collections::HashMap<(String, String, String, String), usize> =
+        std::collections::HashMap::new();
+    for f in kept {
+        *remaining
+            .entry((
+                f.file.clone(),
+                f.title.clone(),
+                f.severity.to_string(),
+                f.category.clone(),
+            ))
+            .or_insert(0) += 1;
+    }
+    for s in scores.iter_mut().filter(|s| s.expert_name == "code_quality") {
+        s.details.retain(|d| {
+            let f = experts::score_item_to_finding(d);
+            let key = (f.file, f.title, f.severity.to_string(), f.category);
+            match remaining.get_mut(&key) {
+                Some(n) if *n > 0 => {
+                    *n -= 1;
+                    true
+                }
+                _ => false,
+            }
+        });
+    }
 }
 
 /// Render an expert-score detail line as markdown.
@@ -566,7 +689,16 @@ fn render_detail(d: &ScoreItemDetail) -> String {
 }
 
 /// Render a repo-review output in the requested format.
-pub fn render_repo_review_output(output: &RepoReviewOutput, format: &str) -> Result<String> {
+///
+/// `verification_enabled` tells the Markdown renderer whether the finding
+/// verification pass ran, so the "Dropped by verification" appendix can show
+/// a run summary even when nothing was dropped (mirrors the review
+/// pipeline's `format_output`).
+pub fn render_repo_review_output(
+    output: &RepoReviewOutput,
+    format: &str,
+    verification_enabled: bool,
+) -> Result<String> {
     Ok(match format {
         "json" => serde_json::to_string_pretty(output)?,
         _ => {
@@ -680,6 +812,26 @@ pub fn render_repo_review_output(output: &RepoReviewOutput, format: &str) -> Res
             md.push('\n');
             md.push_str(&format!("**Recommendation**: {}\n", output.conclusion.recommendation));
 
+            // ── Verification appendix ──
+            // checked = surviving code_quality findings + dropped ones, the
+            // same "kept + dropped" accounting the review pipeline uses.
+            let checked = output
+                .expert_scores
+                .iter()
+                .filter(|s| s.name == "code_quality")
+                .map(|s| s.details.len())
+                .sum::<usize>()
+                + output.dropped_findings.len();
+            let appendix = crate::output::renderer::render_dropped_findings_appendix(
+                &output.dropped_findings,
+                verification_enabled,
+                checked,
+            );
+            if !appendix.is_empty() {
+                md.push_str("\n---\n\n");
+                md.push_str(&appendix);
+            }
+
             md.push_str("\n---\n*Report generated by Review Engine*\n");
             md = close_unclosed_code_fences(&md);
             md
@@ -736,6 +888,7 @@ fn parse_repo_review_response(response: &str) -> Result<RepoReviewOutput> {
             risk_categories: vec![],
             action_items,
             conclusion,
+            dropped_findings: vec![],
         });
     }
     let overview = ReportOverview {
@@ -759,6 +912,7 @@ fn parse_repo_review_response(response: &str) -> Result<RepoReviewOutput> {
             top_risks: vec![],
             recommendation: String::new(),
         },
+        dropped_findings: vec![],
     })
 }
 
@@ -816,6 +970,7 @@ mod tests {
             impact: Some("breaks things".to_string()),
             recommendation: Some("fix it".to_string()),
             effort: Some("medium".to_string()),
+            confidence: None,
         }];
         let scores = vec![ExpertScore {
             expert_name: "security".to_string(),
@@ -1013,6 +1168,7 @@ mod tests {
             impact: None,
             recommendation: None,
             effort: None,
+            confidence: None,
         }];
         let scores = vec![ExpertScore {
             expert_name: "test".to_string(),
@@ -1138,5 +1294,181 @@ action_items:
         assert_eq!(output.overview.risk_level, "low");
         assert_eq!(output.action_items.len(), 1);
         assert_eq!(output.action_items[0].message, "Add more tests");
+    }
+
+    // ── dropped_findings serde compatibility ──
+
+    fn minimal_output() -> RepoReviewOutput {
+        RepoReviewOutput {
+            overview: ReportOverview {
+                health_score: 80,
+                risk_level: "low".to_string(),
+                total_experts: 1,
+                total_files: 10,
+                total_loc: 1000,
+                languages: vec![],
+                lead_summary: None,
+                score_breakdown: vec![],
+            },
+            expert_scores: vec![],
+            risk_categories: vec![],
+            action_items: vec![],
+            conclusion: ReportConclusion {
+                aggregated_score: 80,
+                risk_level: "low".to_string(),
+                top_risks: vec![],
+                recommendation: String::new(),
+            },
+            dropped_findings: vec![],
+        }
+    }
+
+    fn make_dropped_finding(title: &str) -> crate::team::verifier::DroppedFinding {
+        crate::team::verifier::DroppedFinding {
+            finding: Finding {
+                file: "src/a.rs".to_string(),
+                line: None,
+                line_end: None,
+                severity: Severity::High,
+                confidence: 7,
+                category: "quality".to_string(),
+                title: title.to_string(),
+                summary: String::new(),
+                evidence: String::new(),
+                impact: String::new(),
+                recommendation: String::new(),
+                effort: Effort::Small,
+                expert_name: "code_quality".to_string(),
+                expert_role: "Code Quality".to_string(),
+                agrees_with: vec![],
+                references: vec![],
+            },
+            reason: "Disproven by file content".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_repo_review_output_deserializes_without_dropped_findings() {
+        // JSON produced before the field existed must still deserialize.
+        let mut value = serde_json::to_value(minimal_output()).unwrap();
+        value.as_object_mut().unwrap().remove("dropped_findings");
+        let de: RepoReviewOutput = serde_json::from_value(value).unwrap();
+        assert!(de.dropped_findings.is_empty());
+    }
+
+    #[test]
+    fn test_repo_review_output_dropped_findings_roundtrip() {
+        let mut output = minimal_output();
+        output.dropped_findings.push(make_dropped_finding("False alarm"));
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("dropped_findings"));
+        let de: RepoReviewOutput = serde_json::from_str(&json).unwrap();
+        assert_eq!(de.dropped_findings.len(), 1);
+        assert_eq!(de.dropped_findings[0].finding.title, "False alarm");
+        assert_eq!(de.dropped_findings[0].reason, "Disproven by file content");
+    }
+
+    // ── strip_dropped_from_scores ──
+
+    fn chunk_score(details: Vec<ScoreItem>) -> ExpertScore {
+        ExpertScore {
+            expert_name: "code_quality".to_string(),
+            weight: 10,
+            score: 70,
+            summary: String::new(),
+            details,
+        }
+    }
+
+    fn item(message: &str, file: Option<&str>) -> ScoreItem {
+        ScoreItem {
+            severity: "high".to_string(),
+            message: message.to_string(),
+            file: file.map(String::from),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_strip_dropped_from_scores_removes_only_dropped() {
+        let mut scores = vec![
+            chunk_score(vec![item("Kept", Some("src/a.rs")), item("Dropped", Some("src/a.rs"))]),
+            chunk_score(vec![item("Kept too", Some("src/b.rs"))]),
+            ExpertScore {
+                expert_name: "security".to_string(),
+                weight: 15,
+                score: 80,
+                summary: String::new(),
+                details: vec![item("Static finding", Some("src/c.rs"))],
+            },
+        ];
+        let kept: Vec<Finding> = vec![
+            experts::score_item_to_finding(&item("Kept", Some("src/a.rs"))),
+            experts::score_item_to_finding(&item("Kept too", Some("src/b.rs"))),
+        ];
+        strip_dropped_from_scores(&mut scores, &kept);
+        assert_eq!(scores[0].details.len(), 1);
+        assert_eq!(scores[0].details[0].message, "Kept");
+        assert_eq!(scores[1].details.len(), 1);
+        // Non-code_quality experts are untouched.
+        assert_eq!(scores[2].details.len(), 1);
+        assert_eq!(scores[2].details[0].message, "Static finding");
+    }
+
+    #[test]
+    fn test_strip_dropped_from_scores_count_based_matching() {
+        // Identical findings in two chunks: one surviving copy keeps one.
+        let mut scores = vec![
+            chunk_score(vec![item("Same", Some("src/a.rs"))]),
+            chunk_score(vec![item("Same", Some("src/a.rs"))]),
+        ];
+        let kept: Vec<Finding> = vec![experts::score_item_to_finding(&item("Same", Some("src/a.rs")))];
+        strip_dropped_from_scores(&mut scores, &kept);
+        let total: usize = scores.iter().map(|s| s.details.len()).sum();
+        assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn test_strip_dropped_from_scores_distinguishes_severity() {
+        // Same file + title but different severity: keeping the high-severity
+        // copy must not retain the low-severity one (listed first, so a plain
+        // (file, title) count match would keep the wrong item).
+        let low = ScoreItem {
+            severity: "low".to_string(),
+            ..item("Same", Some("src/a.rs"))
+        };
+        let high = item("Same", Some("src/a.rs"));
+        let mut scores = vec![chunk_score(vec![low, high.clone()])];
+        let kept: Vec<Finding> = vec![experts::score_item_to_finding(&high)];
+        strip_dropped_from_scores(&mut scores, &kept);
+        assert_eq!(scores[0].details.len(), 1);
+        assert_eq!(scores[0].details[0].severity, "high");
+    }
+
+    // ── verification appendix in markdown ──
+
+    #[test]
+    fn test_render_markdown_appends_verification_appendix() {
+        let mut output = minimal_output();
+        output.dropped_findings.push(make_dropped_finding("False alarm"));
+        let md = render_repo_review_output(&output, "markdown", true).unwrap();
+        assert!(md.contains("## Dropped by verification"));
+        assert!(md.contains("False alarm"));
+        assert!(md.contains("1 dropped"));
+    }
+
+    #[test]
+    fn test_render_markdown_verification_enabled_no_drops() {
+        let output = minimal_output();
+        let md = render_repo_review_output(&output, "markdown", true).unwrap();
+        assert!(md.contains("## Dropped by verification"));
+        assert!(md.contains("no findings were dropped (0 checked)"));
+    }
+
+    #[test]
+    fn test_render_markdown_verification_disabled_no_appendix() {
+        let output = minimal_output();
+        let md = render_repo_review_output(&output, "markdown", false).unwrap();
+        assert!(!md.contains("Dropped by verification"));
     }
 }

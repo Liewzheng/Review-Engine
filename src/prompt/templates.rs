@@ -3,7 +3,45 @@
 //! All templates use the MiniJinja templating language and are
 //! embedded in the binary at compile time.
 
-pub(crate) const REVIEW_SYSTEM_TEMPLATE: &str = r###"
+/// The CONTEXT BOUNDARY paragraph for diff-based reviews, as a macro so the
+/// same literal can be inlined into multiple `const` templates via `concat!`.
+macro_rules! context_boundary_block {
+    () => {
+        r###"CONTEXT BOUNDARY:
+- You can ONLY see the diff below. You can NOT see imported helper files, the implementation of wrapper/helper functions, backend route definitions, or middleware.
+- Claims of the form "X is missing" (missing header, missing base path, missing validation, missing error handling) MUST be provable directly from the diff. If you cannot prove a claim from the diff, either do NOT report it, or report it with severity `note` and confidence 4 or lower, and state the assumption it relies on explicitly in the summary, starting with "Assumption:".
+- When the reviewed code calls a wrapper or helper function (e.g. request(), apiClient, a wrapper, middleware), assume cross-cutting behavior (headers, base URL, serialization, error conversion) may already be handled by that layer unless the diff contains evidence to the contrary.
+- Do NOT make factual assertions about files, routes, or function implementations that do not appear in the diff."###
+    };
+}
+
+/// The CONTEXT BOUNDARY paragraph adapted for repo-review experts, which see
+/// whole files (or a file tree) instead of a diff. Shares the sentence
+/// patterns of [`CONTEXT_BOUNDARY_BLOCK`].
+macro_rules! context_boundary_block_repo {
+    () => {
+        r###"CONTEXT BOUNDARY:
+- You can ONLY see the files provided to you. You can NOT see any other files in the repository.
+- Do NOT make factual assertions about the content of files that were not provided to you.
+- If a claim involves files not provided to you, report it only with severity `note` and confidence 4 or lower, and state the assumption it relies on explicitly, starting with "Assumption:"."###
+    };
+}
+
+/// CONTEXT BOUNDARY rules for diff-based review prompts. Inlined into
+/// [`REVIEW_SYSTEM_TEMPLATE`] via `concat!` (the rendered template is
+/// unchanged); the const itself is the programmatic interface used by tests
+/// (`concat!` requires literals, hence the macro indirection).
+#[allow(dead_code)]
+pub(crate) const CONTEXT_BOUNDARY_BLOCK: &str = context_boundary_block!();
+
+/// CONTEXT BOUNDARY rules for repo-review prompts ([`CODE_QUALITY_SYSTEM_TEMPLATE`],
+/// [`ARCHITECTURE_LEAD_SYSTEM_TEMPLATE`]). See [`CONTEXT_BOUNDARY_BLOCK`] for
+/// why inlining goes through the macro.
+#[allow(dead_code)]
+pub(crate) const CONTEXT_BOUNDARY_BLOCK_REPO: &str = context_boundary_block_repo!();
+
+pub(crate) const REVIEW_SYSTEM_TEMPLATE: &str = concat!(
+    r###"
 You are a code review expert.
 {{ perspective }}
 
@@ -35,11 +73,9 @@ SCOPE RULES:
 - If you cannot determine whether a line is new or existing, skip the finding.
 - Do NOT report theoretical/speculative issues without concrete evidence from the diff.
 
-CONTEXT BOUNDARY:
-- You can ONLY see the diff below. You can NOT see imported helper files, the implementation of wrapper/helper functions, backend route definitions, or middleware.
-- Claims of the form "X is missing" (missing header, missing base path, missing validation, missing error handling) MUST be provable directly from the diff. If you cannot prove a claim from the diff, either do NOT report it, or report it with severity `note` and confidence 4 or lower, and state the assumption it relies on explicitly in the summary, starting with "Assumption:".
-- When the reviewed code calls a wrapper or helper function (e.g. request(), apiClient, a wrapper, middleware), assume cross-cutting behavior (headers, base URL, serialization, error conversion) may already be handled by that layer unless the diff contains evidence to the contrary.
-- Do NOT make factual assertions about files, routes, or function implementations that do not appear in the diff.
+"###,
+    context_boundary_block!(),
+    r###"
 
 Confidence calibration (use these to decide what to report):
 - 9-10: Certain. You can see the exact bug and trigger in the diff code.
@@ -67,7 +103,8 @@ review:
       recommendation: "How to fix it"
       effort: "small"
 ```
-"###;
+"###
+);
 
 pub(crate) const REVIEW_USER_TEMPLATE: &str = r###"
 ## Merge Request Information
@@ -324,46 +361,13 @@ pub(crate) const ASK_LINE_USER_TEMPLATE: &str = r###"
 {{ question }}
 "###;
 
-pub(crate) const REPO_REVIEW_SYSTEM_TEMPLATE: &str = r###"
-You are a repository health analyst. Analyze the provided repository
-information and generate a health report.
-
-Output YAML format:
-```yaml
-health_score: 0-100
-risk_level: "low" | "medium" | "high" | "critical"
-summary: "Overall assessment"
-action_items:
-  - "Action item 1"
-  - "Action item 2"
-risk_map:
-  - area: "security"
-    risk: "low"
-    recommendation: "Use parameterized queries"
-```
-"###;
-
-pub(crate) const REPO_REVIEW_USER_TEMPLATE: &str = r###"
-## Repository Information
-{{ repo_info }}
-
-## File Tree
-{% for file in file_tree %}
-- {{ file }}
-{% endfor %}
-
-## Language Statistics
-{% for item in language_stats %}
-- {{ item.lang }}: {{ item.loc }} bytes
-{% endfor %}
-"###;
-
 /// System prompt for the Architecture Lead expert (repo-review pipeline).
 ///
 /// Instructs the LLM to analyze the file tree and produce a YAML
 /// assessment with structured risk_areas (including evidence, impact,
 /// recommendation, effort).
-pub(crate) const ARCHITECTURE_LEAD_SYSTEM_TEMPLATE: &str = r###"
+pub(crate) const ARCHITECTURE_LEAD_SYSTEM_TEMPLATE: &str = concat!(
+    r###"
 You are an expert software architect evaluating a repository.
 Analyze the file tree and structure below. Focus on:
 - Module organization and separation of concerns
@@ -386,14 +390,21 @@ focus_modules:
   - "Module directory that needs attention"
 guidance: "Advice for domain experts"
 ```
+
+"###,
+    context_boundary_block_repo!(),
+    r###"
+
 Do NOT report "no code provided" — you are only expected to see file names.
-"###;
+"###
+);
 
 /// System prompt for the Code Quality expert (repo-review pipeline).
 ///
 /// Instructs the LLM to evaluate a module's code and produce findings
 /// with evidence, impact, recommendation, and effort.
-pub(crate) const CODE_QUALITY_SYSTEM_TEMPLATE: &str = r###"
+pub(crate) const CODE_QUALITY_SYSTEM_TEMPLATE: &str = concat!(
+    r###"
 You are a senior software engineer reviewing the module **{{ module }}**.
 The code below is the full content of all files in this module.
 
@@ -411,12 +422,17 @@ IMPORTANT:
 - Do NOT report issues about missing code — only evaluate what is provided
 - If the code is clean, give a high score with minimal or empty findings
 
+"###,
+    context_boundary_block_repo!(),
+    r###"
+
 Output YAML format:
 ```yaml
 score: 0-100
 summary: "Brief assessment of this module"
 findings:
   - severity: "high" | "medium" | "low" | "info"
+    confidence: 0-10
     message: "Specific issue with file reference"
     file: "relative/file/path.rs"
     evidence: "Code snippet showing the problem"
@@ -424,7 +440,8 @@ findings:
     recommendation: "How to fix it"
     effort: "trivial" | "small" | "medium" | "large"
 ```
-"###;
+"###
+);
 
 pub(crate) const CHANGELOG_SYSTEM_TEMPLATE: &str = r###"
 You are a CHANGELOG generator. Given a diff, commit messages, and MR info,
@@ -497,3 +514,29 @@ verdicts:
     reason: "One sentence stating the concrete evidence that disproves the finding."
 ```
 "###;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_context_boundary_block_inlined_in_review_template() {
+        assert!(REVIEW_SYSTEM_TEMPLATE.contains(CONTEXT_BOUNDARY_BLOCK));
+        assert!(CONTEXT_BOUNDARY_BLOCK.starts_with("CONTEXT BOUNDARY:"));
+        assert!(CONTEXT_BOUNDARY_BLOCK.contains("Assumption:"));
+    }
+
+    #[test]
+    fn test_repo_boundary_block_inlined_in_repo_templates() {
+        assert!(CODE_QUALITY_SYSTEM_TEMPLATE.contains(CONTEXT_BOUNDARY_BLOCK_REPO));
+        assert!(ARCHITECTURE_LEAD_SYSTEM_TEMPLATE.contains(CONTEXT_BOUNDARY_BLOCK_REPO));
+        assert!(CONTEXT_BOUNDARY_BLOCK_REPO.starts_with("CONTEXT BOUNDARY:"));
+        assert!(CONTEXT_BOUNDARY_BLOCK_REPO.contains("files provided to you"));
+        assert!(CONTEXT_BOUNDARY_BLOCK_REPO.contains("Assumption:"));
+    }
+
+    #[test]
+    fn test_code_quality_template_requests_confidence() {
+        assert!(CODE_QUALITY_SYSTEM_TEMPLATE.contains("confidence: 0-10"));
+    }
+}
