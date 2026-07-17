@@ -7,6 +7,11 @@
 //! local checkout, and the complete changed-file list. Findings the evidence
 //! disproves are dropped and reported as [`DroppedFinding`]; everything else
 //! is kept — the pass is fail-open on any LLM or parsing error.
+//!
+//! When `files` is empty the pass runs in *no-hunk mode* (used by
+//! repo-review): the prompt carries no diff-hunk section, the file list is
+//! derived from the findings themselves, and the system-prompt wording is
+//! adapted — keep/drop semantics are unchanged.
 
 use crate::llm::client::LLMClient;
 use crate::models::{DiffFile, ExpertReport, Finding, LLMConfig};
@@ -59,6 +64,11 @@ pub(crate) async fn verify_findings(
 }
 
 /// Core verification loop with the LLM call injected for testability.
+///
+/// When `files` is empty the pass runs in no-hunk mode (repo-review): the
+/// prompt contains no diff-hunk section, the file list is derived from the
+/// findings themselves, and the system prompt wording is adapted. Keep/drop
+/// semantics are identical in both modes.
 async fn verify_with_llm<F, Fut>(
     reports: &mut [ExpertReport],
     files: &[DiffFile],
@@ -82,20 +92,34 @@ where
         }
     }
 
-    let changed_files: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    let has_hunks = !files.is_empty();
+    // File list shown to the verifier: the diff's changed files, or — in
+    // no-hunk mode — the files referenced by the findings themselves.
+    let file_list: Vec<&str> = if has_hunks {
+        files.iter().map(|f| f.path.as_str()).collect()
+    } else {
+        groups.iter().map(|(path, _)| path.as_str()).collect()
+    };
+    let system = verifier_system_prompt(has_hunks);
     let mut drop_marks: std::collections::HashMap<(usize, usize), String> = std::collections::HashMap::new();
 
     for (file, group) in &groups {
-        let hunks = files
-            .iter()
-            .find(|d| d.path == *file)
-            .map(crate::diff::processor::render_file_diff)
-            .unwrap_or_else(|| "(file not present in the diff)".to_string());
+        let hunks: Option<String> = if has_hunks {
+            Some(
+                files
+                    .iter()
+                    .find(|d| d.path == *file)
+                    .map(crate::diff::processor::render_file_diff)
+                    .unwrap_or_else(|| "(file not present in the diff)".to_string()),
+            )
+        } else {
+            None
+        };
         let content = load_file_context(project_path, file, max_file_bytes);
 
         for batch in group.chunks(MAX_FINDINGS_PER_BATCH) {
-            let user = build_user_prompt(file, &hunks, &content, &changed_files, batch, reports);
-            let response = match llm(VERIFIER_SYSTEM_TEMPLATE.to_string(), user).await {
+            let user = build_user_prompt(file, hunks.as_deref(), &content, &file_list, batch, reports);
+            let response = match llm(system.clone(), user).await {
                 Ok(r) => r,
                 Err(e) => {
                     tracing::warn!(
@@ -215,25 +239,64 @@ fn load_file_context(project_path: &str, file: &str, max_file_bytes: usize) -> S
     text
 }
 
+/// Phrase in [`VERIFIER_SYSTEM_TEMPLATE`] describing what the experts saw;
+/// only accurate for diff-based reviews. (Spans a line wrap in the template.)
+const HUNK_EXPERT_PHRASE: &str = "while seeing only fragments of a\ndiff";
+/// No-hunk replacement for [`HUNK_EXPERT_PHRASE`] (repo-review experts saw
+/// whole files, not diff fragments).
+const NO_HUNK_EXPERT_PHRASE: &str = "while seeing only individual source files, not the whole repository";
+/// Phrase in [`VERIFIER_SYSTEM_TEMPLATE`] describing the ground-truth
+/// context; only accurate when diff hunks are available. (Spans line wraps.)
+const HUNK_CONTEXT_PHRASE: &str = "the diff hunks of\nthe referenced file, the file's current full content, and the complete list of\nfiles changed in this merge request";
+/// No-hunk replacement for [`HUNK_CONTEXT_PHRASE`].
+const NO_HUNK_CONTEXT_PHRASE: &str = "the referenced file's current full content and the complete list of files referenced by the findings (no diff hunks are available)";
+
+/// System prompt for the verifier, with the context description adapted to
+/// whether diff hunks are available. The keep/drop rules are identical in
+/// both modes; only the framing of what was seen and what is provided
+/// changes.
+fn verifier_system_prompt(has_hunks: bool) -> String {
+    if has_hunks {
+        VERIFIER_SYSTEM_TEMPLATE.to_string()
+    } else {
+        VERIFIER_SYSTEM_TEMPLATE
+            .replace(HUNK_EXPERT_PHRASE, NO_HUNK_EXPERT_PHRASE)
+            .replace(HUNK_CONTEXT_PHRASE, NO_HUNK_CONTEXT_PHRASE)
+    }
+}
+
 /// Build the user prompt for one verification batch.
+///
+/// In no-hunk mode (`hunks` is `None`) the diff-hunk section is replaced by
+/// a note and the file list is introduced as "files referenced by the
+/// findings" instead of "changed files in this merge request".
 fn build_user_prompt(
     file: &str,
-    hunks: &str,
+    hunks: Option<&str>,
     content: &str,
-    changed_files: &[&str],
+    file_list: &[&str],
     batch: &[(usize, usize)],
     reports: &[ExpertReport],
 ) -> String {
     let mut out = String::new();
-    out.push_str("## Changed files in this merge request\n");
-    for p in changed_files {
+    if hunks.is_some() {
+        out.push_str("## Changed files in this merge request\n");
+    } else {
+        out.push_str("## Files referenced by the findings\n");
+    }
+    for p in file_list {
         out.push_str(&format!("- {}\n", p));
     }
     out.push_str(&format!("\n## File under verification: `{}`\n\n", file));
-    out.push_str(&format!(
-        "### Diff hunks for this file\n```diff\n{}\n```\n\n",
-        hunks.trim_end()
-    ));
+    match hunks {
+        Some(hunks) => out.push_str(&format!(
+            "### Diff hunks for this file\n```diff\n{}\n```\n\n",
+            hunks.trim_end()
+        )),
+        None => out.push_str(
+            "No diff hunks are available for this review; verify each finding against the full file content below.\n\n",
+        ),
+    }
     out.push_str(&format!(
         "### Current content of `{}`\n```\n{}\n```\n\n",
         file,
@@ -529,5 +592,102 @@ mod tests {
         }
         assert!(prompts.iter().any(|p| p.contains("`src/a.rs`")));
         assert!(prompts.iter().any(|p| p.contains("`src/b.rs`")));
+    }
+
+    // ─── no-hunk mode (repo-review) ─────────────
+
+    #[test]
+    fn test_verifier_system_prompt_no_hunk_adaptation() {
+        // Guard the replace-based adaptation against template edits.
+        assert!(VERIFIER_SYSTEM_TEMPLATE.contains(HUNK_EXPERT_PHRASE));
+        assert!(VERIFIER_SYSTEM_TEMPLATE.contains(HUNK_CONTEXT_PHRASE));
+
+        let hunk = verifier_system_prompt(true);
+        assert_eq!(hunk, VERIFIER_SYSTEM_TEMPLATE);
+
+        let no_hunk = verifier_system_prompt(false);
+        assert!(no_hunk.contains(NO_HUNK_EXPERT_PHRASE));
+        assert!(no_hunk.contains(NO_HUNK_CONTEXT_PHRASE));
+        assert!(!no_hunk.contains(HUNK_EXPERT_PHRASE));
+        assert!(!no_hunk.contains(HUNK_CONTEXT_PHRASE));
+        assert!(!no_hunk.contains("merge request"));
+    }
+
+    #[tokio::test]
+    async fn test_verify_no_hunk_mode_prompt_omits_hunk_section() {
+        let mut reports = vec![make_report("code_quality", vec![make_finding("src/a.rs", "Bug")])];
+        let files: Vec<DiffFile> = vec![];
+
+        let prompts = Arc::new(Mutex::new(Vec::new()));
+        let prompts2 = prompts.clone();
+        let llm = move |_s: String, user: String| {
+            prompts2.lock().unwrap().push(user);
+            async { Ok("verdicts: []".to_string()) }
+        };
+
+        let dropped = verify_with_llm(&mut reports, &files, "/nonexistent/dir", 20000, llm).await;
+
+        assert!(dropped.is_empty());
+        assert_eq!(reports[0].findings.len(), 1);
+        let prompts = prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 1);
+        let p = &prompts[0];
+        assert!(!p.contains("### Diff hunks"));
+        assert!(!p.contains("Changed files in this merge request"));
+        assert!(p.contains("## Files referenced by the findings"));
+        assert!(p.contains("- src/a.rs"));
+        assert!(p.contains("No diff hunks are available"));
+        assert!(p.contains("### Current content of `src/a.rs`"));
+    }
+
+    #[tokio::test]
+    async fn test_verify_no_hunk_mode_drop_logic_unchanged() {
+        let mut reports = vec![make_report(
+            "code_quality",
+            vec![
+                make_finding("src/a.rs", "False alarm"),
+                make_finding("src/a.rs", "Real bug"),
+            ],
+        )];
+        let files: Vec<DiffFile> = vec![];
+        let llm = |_s: String, _u: String| async {
+            Ok("verdicts:\n  - index: 0\n    verdict: drop\n    reason: \"Claim disproven by file content\"\n  - index: 1\n    verdict: keep\n    reason: \"\"\n".to_string())
+        };
+
+        let dropped = verify_with_llm(&mut reports, &files, "/nonexistent", 20000, llm).await;
+
+        assert_eq!(reports[0].findings.len(), 1);
+        assert_eq!(reports[0].findings[0].title, "Real bug");
+        assert_eq!(dropped.len(), 1);
+        assert_eq!(dropped[0].finding.title, "False alarm");
+    }
+
+    #[tokio::test]
+    async fn test_verify_no_hunk_mode_file_list_comes_from_findings() {
+        // With no diff files, the prompt's file list is derived from the
+        // findings' referenced files (one entry per unique file).
+        let mut reports = vec![
+            make_report("code_quality", vec![make_finding("src/a.rs", "A")]),
+            make_report("code_quality", vec![make_finding("src/b.rs", "B")]),
+        ];
+        let files: Vec<DiffFile> = vec![];
+
+        let prompts = Arc::new(Mutex::new(Vec::new()));
+        let prompts2 = prompts.clone();
+        let llm = move |_s: String, user: String| {
+            prompts2.lock().unwrap().push(user);
+            async { Ok("verdicts: []".to_string()) }
+        };
+
+        let dropped = verify_with_llm(&mut reports, &files, "/nonexistent", 20000, llm).await;
+
+        assert!(dropped.is_empty());
+        let prompts = prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 2);
+        for p in prompts.iter() {
+            assert!(p.contains("## Files referenced by the findings"));
+            assert!(p.contains("- src/a.rs"));
+            assert!(p.contains("- src/b.rs"));
+        }
     }
 }

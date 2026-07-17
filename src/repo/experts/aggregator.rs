@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
 use super::{ExpertScore, ScoreItem};
+use crate::models::{AppConfig, ExpertReport, Finding};
+use crate::team::lead_consolidator::ConsolidatorConfig;
 
 // ─── AggregatedResult ────────────────────────
 
@@ -38,7 +40,13 @@ const NOISE_PATTERNS: &[&str] = &[
 // ─── Aggregator ──────────────────────────────
 
 /// Deduplicate, filter noise, and merge chunk-level expert scores.
-pub fn aggregate(scores: Vec<ExpertScore>) -> AggregatedResult {
+///
+/// Multi-chunk (code_quality) findings are mapped to standard
+/// [`Finding`]s and consolidated through the shared lead consolidator
+/// (confidence downgrade + dedup + conflict detection), replacing the old
+/// `merge_deduplicate` pass for LLM findings. `app_config` supplies the
+/// consolidator's confidence thresholds; `None` uses its defaults.
+pub fn aggregate(scores: Vec<ExpertScore>, app_config: Option<&AppConfig>) -> AggregatedResult {
     // Group by expert name
     let mut by_expert: HashMap<String, Vec<ExpertScore>> = HashMap::new();
     for s in scores {
@@ -77,7 +85,7 @@ pub fn aggregate(scores: Vec<ExpertScore>) -> AggregatedResult {
                     (sum / group.len() as u32) as u8
                 });
 
-            merged_details = merge_deduplicate(merged_details);
+            let mut merged_details = consolidate_chunk_findings(&name, merged_details, app_config);
             merged_details.truncate(MAX_FINDINGS);
 
             // Pick the best summary from the group
@@ -151,7 +159,9 @@ fn is_noise_summary(text: &str) -> bool {
     text.contains("No code") || text.contains("no code")
 }
 
-fn filter_noise(details: Vec<ScoreItem>) -> Vec<ScoreItem> {
+/// Filter out empty and noise findings. Shared with the repo-review
+/// verification path, which pre-filters before building standard findings.
+pub(crate) fn filter_noise(details: Vec<ScoreItem>) -> Vec<ScoreItem> {
     let original_len = details.len();
     let result: Vec<ScoreItem> = details
         .into_iter()
@@ -193,6 +203,48 @@ fn estimate_loc(details: &[ScoreItem]) -> u64 {
     (details.len() * 200).max(100) as u64
 }
 
+/// Consolidate one multi-chunk expert's findings through the shared lead
+/// consolidator: map to standard [`Finding`]s, wrap them in a single
+/// [`ExpertReport`], and run [`ConsolidatorConfig::consolidate`] for
+/// confidence downgrade, deduplication, and conflict detection. The result
+/// is converted back to [`ScoreItem`]s and sorted by severity (desc), so
+/// downstream rendering keeps the old ordering.
+fn consolidate_chunk_findings(
+    expert_name: &str,
+    details: Vec<ScoreItem>,
+    app_config: Option<&AppConfig>,
+) -> Vec<ScoreItem> {
+    let findings: Vec<Finding> = details.iter().map(super::score_item_to_finding).collect();
+    let report = ExpertReport {
+        expert_name: expert_name.to_string(),
+        findings,
+        markdown: String::new(),
+        raw_llm_response: String::new(),
+    };
+    let consolidator = match app_config {
+        Some(c) => ConsolidatorConfig {
+            min_confidence: c.report.min_confidence,
+            drop_low_confidence: c.report.drop_low_confidence,
+            ..Default::default()
+        },
+        None => ConsolidatorConfig::default(),
+    };
+    let result = consolidator.consolidate(&[report], None);
+    if !result.conflicts.is_empty() {
+        tracing::debug!(
+            "{}: {} conflicts detected during consolidation",
+            expert_name,
+            result.conflicts.len()
+        );
+    }
+    let mut items: Vec<ScoreItem> = result.findings.iter().map(super::finding_to_score_item).collect();
+    items.sort_by_key(|d| std::cmp::Reverse(severity_rank(&d.severity)));
+    items
+}
+
+/// Cross-expert dedup for the final `all_findings` list (static experts'
+/// findings never go through the lead consolidator). Multi-chunk LLM
+/// findings are consolidated earlier by [`consolidate_chunk_findings`].
 fn merge_deduplicate(items: Vec<ScoreItem>) -> Vec<ScoreItem> {
     let mut merged: HashMap<(String, Option<String>), ScoreItem> = HashMap::new();
     for item in items {
@@ -268,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_aggregate_empty_input() {
-        let result = aggregate(vec![]);
+        let result = aggregate(vec![], None);
         assert!(result.scores.is_empty());
         assert!(result.all_findings.is_empty());
     }
@@ -277,7 +329,7 @@ mod tests {
     fn test_aggregate_single_expert() {
         let details = vec![make_item("high", "Issue 1")];
         let scores = vec![make_score("lead", 85, 20, "Good", details.clone())];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         assert_eq!(result.scores.len(), 1);
         assert_eq!(result.scores[0].expert_name, "lead");
         assert_eq!(result.scores[0].score, 85);
@@ -291,7 +343,7 @@ mod tests {
             make_item("info", "No code snippet provided"), // should be filtered
         ];
         let scores = vec![make_score("lead", 70, 20, "Assessment", details)];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // noise should be filtered
         assert_eq!(result.scores[0].details.len(), 1);
         assert_eq!(result.scores[0].details[0].message, "Real issue");
@@ -317,7 +369,7 @@ mod tests {
                 vec![make_item("high", "Issue B")],
             ),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         assert_eq!(result.scores.len(), 1);
         assert_eq!(result.scores[0].expert_name, "code_quality");
         // LOC-weighted: each chunk has (1 finding * 200) = 200 LOC estimate
@@ -331,7 +383,7 @@ mod tests {
             make_score("code_quality", 90, 10, "Great module", vec![make_item("note", "Fine")]),
             make_score("code_quality", 50, 10, "Needs work", vec![make_item("critical", "Bug")]),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // Should pick the best (non-noise) summary: "Great module" (score 90)
         assert_eq!(result.scores[0].summary, "Great module");
     }
@@ -348,7 +400,7 @@ mod tests {
             ),
             make_score("code_quality", 80, 10, "No code sample", vec![make_item("low", "Nit")]),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // Both summaries are noise, should fall back to "N chunks evaluated, avg score M"
         assert!(result.scores[0].summary.contains("chunks evaluated"));
     }
@@ -363,10 +415,110 @@ mod tests {
             make_score("code_quality", 70, 10, "OK", details),
             make_score("code_quality", 70, 10, "OK", vec![make_item("low", "Unique issue")]),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // Dedup should leave only 2 unique findings (duplicate issue + unique)
         // But both chunks have separate details; dedup happens after merging
         assert_eq!(result.all_findings.len(), 2);
+    }
+
+    // ─── lead-consolidator integration ──────────
+
+    fn make_item_full(severity: &str, message: &str, file: &str, confidence: Option<u8>) -> ScoreItem {
+        ScoreItem {
+            severity: severity.to_string(),
+            message: message.to_string(),
+            file: Some(file.to_string()),
+            confidence,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_consolidator_dedupes_identical_chunk_findings() {
+        // Two chunks report the identical issue in the same file: the lead
+        // consolidator must merge them into one finding.
+        let scores = vec![
+            make_score(
+                "code_quality",
+                80,
+                10,
+                "chunk1",
+                vec![make_item_full("high", "Duplicate issue", "src/a.rs", Some(9))],
+            ),
+            make_score(
+                "code_quality",
+                60,
+                10,
+                "chunk2",
+                vec![
+                    make_item_full("high", "Duplicate issue", "src/a.rs", Some(9)),
+                    make_item_full("medium", "Unique issue", "src/b.rs", Some(9)),
+                ],
+            ),
+        ];
+        let result = aggregate(scores, None);
+        let cq = result.scores.iter().find(|s| s.expert_name == "code_quality").unwrap();
+        assert_eq!(cq.details.len(), 2);
+        assert_eq!(cq.details.iter().filter(|d| d.message == "Duplicate issue").count(), 1);
+        // confidence 9 >= min_confidence (6): severities kept
+        assert_eq!(cq.details[0].severity, "high");
+        assert_eq!(cq.details[1].severity, "medium");
+    }
+
+    #[test]
+    fn test_consolidator_downgrades_low_confidence_findings() {
+        // Default min_confidence is 6 and drop_low_confidence is false, so a
+        // low-confidence critical finding is downgraded one severity level.
+        let scores = vec![
+            make_score(
+                "code_quality",
+                70,
+                10,
+                "chunk1",
+                vec![make_item_full("medium", "Solid issue", "src/a.rs", Some(8))],
+            ),
+            make_score(
+                "code_quality",
+                70,
+                10,
+                "chunk2",
+                vec![make_item_full("critical", "Shaky claim", "src/b.rs", Some(3))],
+            ),
+        ];
+        let result = aggregate(scores, None);
+        let cq = result.scores.iter().find(|s| s.expert_name == "code_quality").unwrap();
+        assert_eq!(cq.details.len(), 2);
+        let shaky = cq.details.iter().find(|d| d.message == "Shaky claim").unwrap();
+        assert_eq!(shaky.severity, "high"); // critical downgraded once
+        assert_eq!(shaky.confidence, Some(3));
+        let solid = cq.details.iter().find(|d| d.message == "Solid issue").unwrap();
+        assert_eq!(solid.severity, "medium");
+        assert_eq!(solid.confidence, Some(8));
+    }
+
+    #[test]
+    fn test_consolidator_drops_low_confidence_when_configured() {
+        let config: AppConfig = toml::from_str("[report]\ndrop_low_confidence = true\n").unwrap();
+        let scores = vec![
+            make_score(
+                "code_quality",
+                70,
+                10,
+                "chunk1",
+                vec![make_item_full("high", "Kept issue", "src/a.rs", Some(8))],
+            ),
+            make_score(
+                "code_quality",
+                70,
+                10,
+                "chunk2",
+                vec![make_item_full("high", "Dropped issue", "src/b.rs", Some(2))],
+            ),
+        ];
+        let result = aggregate(scores, Some(&config));
+        let cq = result.scores.iter().find(|s| s.expert_name == "code_quality").unwrap();
+        assert_eq!(cq.details.len(), 1);
+        assert_eq!(cq.details[0].message, "Kept issue");
     }
 
     // ─── filter_noise / dedup ────────────────────
@@ -436,6 +588,7 @@ mod tests {
                 impact: Some("Small impact".to_string()),
                 recommendation: Some("Fix it".to_string()),
                 effort: Some("small".to_string()),
+                confidence: None,
             },
             ScoreItem {
                 severity: "high".to_string(),
@@ -445,6 +598,7 @@ mod tests {
                 impact: Some("Larger impact".to_string()),
                 recommendation: Some("Better fix".to_string()),
                 effort: Some("large".to_string()),
+                confidence: None,
             },
         ];
         let deduped = merge_deduplicate(items);
@@ -472,7 +626,7 @@ mod tests {
                 make_item("medium", "Medium concern"),
             ],
         )];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         assert_eq!(result.all_findings.len(), 3);
         // Should be sorted by severity descending: critical, medium, low
         assert_eq!(result.all_findings[0].severity, "critical");
@@ -484,7 +638,7 @@ mod tests {
     fn test_aggregate_truncates_to_max_findings() {
         let many_items: Vec<ScoreItem> = (0..30).map(|i| make_item("low", &format!("Issue {}", i))).collect();
         let scores = vec![make_score("lead", 50, 20, "Summary", many_items)];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         assert!(result.all_findings.len() <= 20);
     }
 
@@ -497,7 +651,7 @@ mod tests {
             make_score("code_quality", 80, 10, "First", vec![]),
             make_score("code_quality", 60, 10, "Second", vec![]),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // total_loc = max(0*200, 100) = 100 for each, so 200 total
         // Actually estimate_loc returns (0 * 200).max(100) = 100 for each
         // total_weighted = 80*100 + 60*100 = 14000, total_loc = 200, avg = 70
@@ -517,7 +671,7 @@ mod tests {
             make_score("code_quality", 70, 10, "Chunk1", vec![make_item("medium", "Issue X")]),
             make_score("code_quality", 50, 10, "Chunk2", vec![make_item("high", "Issue Y")]),
         ];
-        let result = aggregate(scores);
+        let result = aggregate(scores, None);
         // 2 groups: architecture (single) and code_quality (multi)
         assert_eq!(result.scores.len(), 2);
         let arch = result.scores.iter().find(|s| s.expert_name == "architecture").unwrap();

@@ -914,7 +914,14 @@ consensus_threshold = 80
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn test_resolve_config_inline_with_commands() {
+        // resolve_config reads the user-level config from $HOME (process-wide).
+        // Hold FS_LOCK and use a clean home so parallel tests that redirect
+        // $HOME (and the machine's real user config) cannot interfere.
+        let _guard = FS_LOCK.lock().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let _home_guard = HomeGuard::set(tmp.path());
         let toml = r#"
 [commands]
 improve = true

@@ -44,8 +44,6 @@ impl PromptEngine {
         env.add_template("ask_line_system", templates::ASK_LINE_SYSTEM_TEMPLATE)?;
         env.add_template("ask_user", templates::ASK_USER_TEMPLATE)?;
         env.add_template("ask_line_user", templates::ASK_LINE_USER_TEMPLATE)?;
-        env.add_template("repo_review_system", templates::REPO_REVIEW_SYSTEM_TEMPLATE)?;
-        env.add_template("repo_review_user", templates::REPO_REVIEW_USER_TEMPLATE)?;
         env.add_template("changelog_system", templates::CHANGELOG_SYSTEM_TEMPLATE)?;
         env.add_template("changelog_user", templates::CHANGELOG_USER_TEMPLATE)?;
         env.add_template("overview_system", templates::OVERVIEW_SYSTEM_TEMPLATE)?;
@@ -224,37 +222,6 @@ impl PromptEngine {
             "question": question,
         });
         let user = self.env.get_template("ask_line_user")?.render(&ctx_user)?;
-        Ok((system, user))
-    }
-
-    /// Build a prompt for a full repository-level health review.
-    ///
-    /// Includes repository information, the file tree, and per-language
-    /// statistics. The LLM produces a health score, risk map, and
-    /// action items.
-    ///
-    /// Returns `(system_prompt, user_prompt)`.
-    pub fn build_repo_review_prompt(
-        &self,
-        repo_info: &str,
-        file_tree: &[String],
-        language_stats: &std::collections::HashMap<String, u64>,
-    ) -> Result<(String, String)> {
-        let system = self
-            .env
-            .get_template("repo_review_system")?
-            .render(&serde_json::json!({}))?;
-        // Convert HashMap to Vec of objects for template iteration
-        let lang_list: Vec<serde_json::Value> = language_stats
-            .iter()
-            .map(|(lang, loc)| serde_json::json!({"lang": lang, "loc": loc}))
-            .collect();
-        let ctx_user = serde_json::json!({
-            "repo_info": repo_info,
-            "file_tree": file_tree,
-            "language_stats": lang_list,
-        });
-        let user = self.env.get_template("repo_review_user")?.render(&ctx_user)?;
         Ok((system, user))
     }
 
@@ -595,8 +562,6 @@ mod tests {
             "ask_line_system",
             "ask_user",
             "ask_line_user",
-            "repo_review_system",
-            "repo_review_user",
             "changelog_system",
             "changelog_user",
             "overview_system",
@@ -667,20 +632,6 @@ mod tests {
         assert!(!system.is_empty());
         assert!(!user.is_empty());
         assert!(user.contains("commit1"));
-    }
-
-    #[test]
-    fn test_build_repo_review_prompt_renders() {
-        let engine = PromptEngine::new();
-        let mut stats = std::collections::HashMap::new();
-        stats.insert("Rust".to_string(), 1000u64);
-        let (system, user) = engine
-            .build_repo_review_prompt("repo info", &["src/main.rs".to_string()], &stats)
-            .unwrap();
-        assert!(!system.is_empty());
-        assert!(!user.is_empty());
-        assert!(user.contains("src/main.rs"));
-        assert!(user.contains("Rust"));
     }
 
     #[test]

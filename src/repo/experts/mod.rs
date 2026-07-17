@@ -75,6 +75,8 @@ pub struct ScoreItem {
     pub recommendation: Option<String>,
     /// Estimated effort: trivial / small / medium / large (optional).
     pub effort: Option<String>,
+    /// Confidence score (0–10) from the LLM, if provided (optional).
+    pub confidence: Option<u8>,
 }
 
 // ─── RepoExpert trait ────────────────────────
@@ -128,8 +130,9 @@ pub fn score_to_risk_level(score: u8) -> &'static str {
 /// Parse a sequence of YAML values into `ScoreItem`s.
 ///
 /// Each item may contain `severity`, `message` (or `description`),
-/// `file`, `evidence`, `impact`, `recommendation`, and `effort`.
-/// Missing fields default to `None` (or `"medium"` for severity).
+/// `file`, `evidence`, `impact`, `recommendation`, `effort`, and
+/// `confidence`. Missing fields default to `None` (or `"medium"` for
+/// severity).
 pub(crate) fn parse_yaml_findings(items: &[serde_yaml_ng::Value]) -> Vec<ScoreItem> {
     items
         .iter()
@@ -149,8 +152,75 @@ pub(crate) fn parse_yaml_findings(items: &[serde_yaml_ng::Value]) -> Vec<ScoreIt
             impact: f["impact"].as_str().map(String::from),
             recommendation: f["recommendation"].as_str().map(String::from),
             effort: f["effort"].as_str().map(String::from),
+            confidence: f["confidence"].as_u64().map(|c| c.min(10) as u8),
         })
         .collect()
+}
+
+// ─── Finding conversion ──────────────────────
+
+/// Map a repo-expert [`ScoreItem`] to a standard [`crate::models::Finding`],
+/// so repo-review findings can flow through the shared quality mechanisms
+/// (lead consolidator, verification pass).
+///
+/// `file` becomes the empty string when the item has no path; `line` is
+/// always `None` (repo findings are not line-anchored); `confidence`
+/// defaults to 5 when the LLM did not provide one.
+pub(crate) fn score_item_to_finding(item: &ScoreItem) -> crate::models::Finding {
+    use crate::models::{Effort, Severity};
+    crate::models::Finding {
+        file: item.file.clone().unwrap_or_default(),
+        line: None,
+        line_end: None,
+        severity: match item.severity.as_str() {
+            "critical" => Severity::Critical,
+            "high" => Severity::High,
+            "medium" => Severity::Medium,
+            "low" => Severity::Low,
+            "note" | "info" => Severity::Note,
+            _ => Severity::Medium,
+        },
+        confidence: item.confidence.unwrap_or(5),
+        category: "quality".to_string(),
+        title: item.message.clone(),
+        summary: String::new(),
+        evidence: item.evidence.clone().unwrap_or_default(),
+        impact: item.impact.clone().unwrap_or_default(),
+        recommendation: item.recommendation.clone().unwrap_or_default(),
+        effort: match item.effort.as_deref() {
+            Some("trivial") => Effort::Trivial,
+            Some("medium") => Effort::Medium,
+            Some("large") => Effort::Large,
+            _ => Effort::Small,
+        },
+        expert_name: "code_quality".to_string(),
+        expert_role: "Code Quality".to_string(),
+        agrees_with: vec![],
+        references: vec![],
+    }
+}
+
+/// Map a standard [`crate::models::Finding`] back to a [`ScoreItem`] for
+/// repo-report rendering. Empty strings map back to `None`, so a round trip
+/// through [`score_item_to_finding`] preserves the original shape.
+pub(crate) fn finding_to_score_item(f: &crate::models::Finding) -> ScoreItem {
+    fn non_empty(s: &str) -> Option<String> {
+        if s.is_empty() {
+            None
+        } else {
+            Some(s.to_string())
+        }
+    }
+    ScoreItem {
+        severity: f.severity.to_string(),
+        message: f.title.clone(),
+        file: non_empty(&f.file),
+        evidence: non_empty(&f.evidence),
+        impact: non_empty(&f.impact),
+        recommendation: non_empty(&f.recommendation),
+        effort: Some(f.effort.to_string()),
+        confidence: Some(f.confidence),
+    }
 }
 
 // ─── Weight helpers ──────────────────────────

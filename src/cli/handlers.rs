@@ -818,12 +818,16 @@ pub async fn run_repo_review_local_or_enhanced(
     output: &Option<String>,
     progress_map: Option<ProgressMap>,
     review_id: &str,
+    config: &AppConfig,
 ) -> Result<()> {
     use review_engine::repo::RepoScanner;
 
+    // The verification pass only runs on the LLM-enhanced path.
+    let verification_enabled = !llm_configs.is_empty() && config.report.verification_pass;
+    let config = Some(std::sync::Arc::new(config.clone()));
     let result = if llm_configs.is_empty() {
         // Local-only analysis (no LLM)
-        review_engine::actions::repo_review::run_local_repo_review(local_path, progress_map, review_id).await?
+        review_engine::actions::repo_review::run_local_repo_review(local_path, progress_map, review_id, config).await?
     } else {
         // LLM-enhanced analysis
         let scanner = RepoScanner::new(local_path);
@@ -836,11 +840,12 @@ pub async fn run_repo_review_local_or_enhanced(
             &entries,
             progress_map,
             review_id,
+            config,
         )
         .await?
     };
 
-    let text = review_engine::actions::repo_review::render_repo_review_output(&result, format)?;
+    let text = review_engine::actions::repo_review::render_repo_review_output(&result, format, verification_enabled)?;
     match output {
         Some(path) => std::fs::write(path, &text)?,
         None => println!("{}", text),

@@ -852,7 +852,8 @@ pub async fn run() -> Result<()> {
             let has_llm = !llm_configs.is_empty() || std::env::var("LLM_CONFIG").is_ok() || !config.llm.is_empty();
             let llm_configs = if has_llm { llm_configs } else { Vec::new() };
 
-            handlers::run_repo_review_local_or_enhanced(&path, &llm_configs, &format, &output, pm, &review_id).await?;
+            handlers::run_repo_review_local_or_enhanced(&path, &llm_configs, &format, &output, pm, &review_id, &config)
+                .await?;
         }
         Commands::RepoReview { .. } => {
             anyhow::bail!("Please specify --local-path");
