@@ -739,6 +739,14 @@ pub async fn run_local_repo(
 
     let llm_configs: Vec<LLMConfig> = resolve_llm_configs(&llm_configs, &config)?;
 
+    if llm_configs.is_empty() {
+        anyhow::bail!(
+            "No LLM configuration found. \
+             Provide [[llm]] in ~/.config/review-engine/.code-audit-config.toml, \
+             the project .code-audit-config.toml, --llm-config, or LLM_CONFIG env var."
+        );
+    }
+
     let (experts, mr_info) = prepare_review(&config, local_path, "local", base_ref);
 
     let (reports, _) = review_engine::team::orchestrator::run_experts(
@@ -828,17 +836,35 @@ fn normalize_all_findings(output: &mut ReviewOutput, repo_root: &Path) {
 /// Format a ReviewOutput according to the requested format string.
 fn format_output(result: &ReviewOutput, format: &str) -> Result<String> {
     Ok(match format {
-        "markdown" => result
-            .reports
-            .iter()
-            .map(|r| r.markdown.clone())
-            .collect::<Vec<_>>()
-            .join("\n\n---\n\n"),
-        "aggregated-markdown" => result
-            .aggregated
-            .as_ref()
-            .map(|a| a.markdown.clone())
-            .unwrap_or_else(|| String::from("No aggregated report")),
+        "markdown" => {
+            let text = result
+                .reports
+                .iter()
+                .map(|r| r.markdown.clone())
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n");
+            if text.trim().is_empty() {
+                "# PR Review Report\n\nNo review content was generated. \
+                 Check that LLM configuration is correct and that the diff contains changes.\n"
+                    .to_string()
+            } else {
+                text
+            }
+        }
+        "aggregated-markdown" => {
+            let text = result
+                .aggregated
+                .as_ref()
+                .map(|a| a.markdown.clone())
+                .unwrap_or_else(|| String::from("No aggregated report"));
+            if text.trim().is_empty() {
+                "# Aggregated PR Review Report\n\nNo aggregated review content was generated. \
+                 Check that LLM configuration is correct and that the diff contains changes.\n"
+                    .to_string()
+            } else {
+                text
+            }
+        }
         _ => serde_json::to_string_pretty(result)?,
     })
 }
@@ -867,6 +893,7 @@ fn write_output(
                     anyhow::bail!("--output path must not contain '..'");
                 }
             }
+            std::fs::create_dir_all(path.parent().unwrap_or(path))?;
             std::fs::write(path, &text)?;
         }
         None => {

@@ -8,9 +8,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use base64::Engine;
 use schemars::schema_for;
 use std::sync::Arc;
-use base64::Engine;
 
 use crate::models::AppConfig;
 use crate::server::AppState;

@@ -15,27 +15,35 @@ fn find_free_port() -> u16 {
     port
 }
 
-struct ServerGuard(Child);
+struct ServerGuard {
+    child: Child,
+    _temp_dir: tempfile::TempDir,
+}
 
 impl Drop for ServerGuard {
     fn drop(&mut self) {
-        let _ = self.0.kill();
-        let _ = self.0.wait();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
 fn spawn_server(port: u16) -> ServerGuard {
+    let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let child = Command::new(bin_path())
         .arg("serve")
         .arg("--bind")
         .arg("127.0.0.1")
         .arg("--port")
         .arg(port.to_string())
+        .env("HOME", temp_dir.path())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
         .expect("failed to spawn review-engine serve");
-    ServerGuard(child)
+    ServerGuard {
+        child,
+        _temp_dir: temp_dir,
+    }
 }
 
 async fn wait_for_server(port: u16) {

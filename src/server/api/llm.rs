@@ -73,10 +73,7 @@ fn default_add_temperature() -> f32 {
     0.7
 }
 
-async fn add_provider(
-    State(state): State<Arc<AppState>>,
-    Json(body): Json<AddProviderRequest>,
-) -> impl IntoResponse {
+async fn add_provider(State(state): State<Arc<AppState>>, Json(body): Json<AddProviderRequest>) -> impl IntoResponse {
     // Validate required fields
     if body.provider.is_empty() {
         return (
@@ -139,10 +136,7 @@ async fn add_provider(
 
 // ─── Delete Provider ──────────────────────────────────────────────
 
-async fn delete_provider(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-) -> impl IntoResponse {
+async fn delete_provider(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> impl IntoResponse {
     // Parse id: expects format "{provider}-{idx}"
     let (provider, idx_str) = match id.rsplit_once('-') {
         Some((p, i)) => (p.to_string(), i.to_string()),
@@ -196,7 +190,9 @@ async fn delete_provider(
         let mut cfg_opt = state.app_config.write().unwrap();
         if let Some(arc) = cfg_opt.as_ref() {
             let mut new_cfg = (**arc).clone();
-            new_cfg.llm.retain(|c| c.provider != removed.provider || c.api_key != removed.api_key);
+            new_cfg
+                .llm
+                .retain(|c| c.provider != removed.provider || c.api_key != removed.api_key);
             *cfg_opt = Some(Arc::new(new_cfg));
         }
     }
