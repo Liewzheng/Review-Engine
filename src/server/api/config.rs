@@ -325,7 +325,9 @@ async fn put_config(State(state): State<Arc<AppState>>, Json(body): Json<UiConfi
     let mut new_llm_configs = Vec::new();
 
     // Build LLM configs from UI fields (all non-empty keys are kept)
+    let mut primary_provider: Option<&str> = None;
     if !body.llm.openai_api_key.is_empty() {
+        primary_provider = Some("openai");
         new_llm_configs.push(crate::models::LLMConfig {
             provider: "openai".to_string(),
             model: body.llm.default_model.clone(),
@@ -336,9 +338,17 @@ async fn put_config(State(state): State<Arc<AppState>>, Json(body): Json<UiConfi
         });
     }
 
-    // Build LLM configs from multi-provider providers Vec
+    // Build LLM configs from multi-provider providers Vec. GET /config maps
+    // every backend LLM config — including the primary — into `llm.providers`,
+    // so a UI round-trip echoes the primary back inside this array. The primary
+    // is authoritatively expressed by the legacy fields above; skip providers
+    // entries with the same provider name or every save would add one more
+    // duplicate (the `{provider}-{i}` id scheme cannot tell them apart anyway).
     for p in &body.llm.providers {
         if !p.provider.is_empty() && !p.api_key.is_empty() {
+            if primary_provider == Some(p.provider.as_str()) {
+                continue;
+            }
             new_llm_configs.push(crate::models::LLMConfig {
                 provider: p.provider.clone(),
                 model: p.default_model.clone(),

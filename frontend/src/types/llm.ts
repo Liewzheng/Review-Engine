@@ -19,6 +19,11 @@ export interface LlmProvider {
   usagePercent?: number
   sparkline?: number[]
   lastChecked: string
+  /** Editable config echoed back by GET /llm/providers (the API key is never returned). */
+  apiBaseUrl?: string
+  defaultModel?: string
+  maxTokens?: number
+  temperature?: number
 }
 
 /** Input/update shape for the provider management CRUD endpoints. */

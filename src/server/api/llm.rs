@@ -34,6 +34,12 @@ async fn get_providers(State(state): State<Arc<AppState>>) -> Json<serde_json::V
                 "logo": logo_for_provider(&cfg.provider),
                 "status": if !cfg.api_key.is_empty() { "healthy" } else { "offline" },
                 "configured": !cfg.api_key.is_empty(),
+                // Echo the editable config back so the UI can prefill the edit
+                // form. The API key is intentionally never returned.
+                "apiBaseUrl": cfg.api_base,
+                "defaultModel": cfg.model,
+                "maxTokens": cfg.max_tokens,
+                "temperature": cfg.temperature,
                 "latencyMs": 0,
                 "errorRate": 0.0,
                 "requestCount": 0,

@@ -651,6 +651,15 @@ const providersLoading = ref(false)
 const addProviderFormRef = ref<FormInstance>()
 const deletedProviderIds = ref<string[]>([])
 
+// Snapshot of the persisted provider list, used by `dirty` to detect
+// add/edit/delete changes. `_expanded` is pure UI state and is normalized
+// out so expanding a form never marks the page dirty.
+const originalProvidersJson = ref('')
+
+function serializeProviders(list: ProviderEntry[]): string {
+  return JSON.stringify(list.map((p) => ({ ...p, _expanded: false })))
+}
+
 function createNewProvider(): ProviderConfig {
   return {
     provider: 'openai',
@@ -671,7 +680,9 @@ const availableModels = computed(() => modelOptions.value)
 
 const dirty = computed(() => {
   if (!isEditing.value || !originalConfig.value) return false
-  return JSON.stringify(config) !== JSON.stringify(originalConfig.value)
+  if (JSON.stringify(config) !== JSON.stringify(originalConfig.value)) return true
+  if (deletedProviderIds.value.length > 0) return true
+  return serializeProviders(additionalProviders.value) !== originalProvidersJson.value
 })
 
 // --- Validation ---
@@ -778,6 +789,12 @@ function cancelEdit() {
   if (originalConfig.value) {
     Object.assign(config, originalConfig.value)
   }
+  // Discard unsaved provider edits as well, otherwise they would keep the
+  // page dirty the next time edit mode is entered.
+  if (originalProvidersJson.value) {
+    additionalProviders.value = JSON.parse(originalProvidersJson.value)
+  }
+  deletedProviderIds.value = []
   isEditing.value = false
   formValid.value = true
 }
@@ -816,11 +833,15 @@ async function saveChanges() {
       duration: 3000,
     })
 
-    // Flash border animation on each card individually
+    // Flash border animation on each card individually. Template refs on
+    // <el-card> resolve to the component instance, not a DOM element, so the
+    // root node must be reached via `$el` (calling classList on the instance
+    // itself throws and lands in the catch above, showing a bogus error
+    // notification after a successful save).
     const cardRefs = [gitlabCardRef, llmCardRef, rulesCardRef, advancedCardRef]
     cardRefs.forEach((cardRef) => {
-      const el = cardRef.value
-      if (el) {
+      const el = (cardRef.value as unknown as { $el?: HTMLElement })?.$el
+      if (el?.classList) {
         el.classList.add('flash-success')
         setTimeout(() => el.classList.remove('flash-success'), 600)
       }
@@ -899,11 +920,13 @@ async function loadProviders() {
     const resp = await getProvidersApi()
     additionalProviders.value = (resp.items || []).map((p) => ({
       provider: p.name || p.id,
+      // The API key is never returned by the backend; leaving it empty
+      // means "unchanged" on update (the backend keeps the stored key).
       apiKey: '',
-      apiBaseUrl: '',
-      defaultModel: '',
-      maxTokens: 4096,
-      temperature: 0.7,
+      apiBaseUrl: p.apiBaseUrl ?? '',
+      defaultModel: p.defaultModel ?? '',
+      maxTokens: p.maxTokens ?? 4096,
+      temperature: p.temperature ?? 0.7,
       timeout: 60,
       retry: 3,
       id: p.id,
@@ -914,6 +937,7 @@ async function loadProviders() {
   } catch {
     additionalProviders.value = []
   } finally {
+    originalProvidersJson.value = serializeProviders(additionalProviders.value)
     providersLoading.value = false
   }
 }
@@ -977,7 +1001,13 @@ async function saveAdditionalProviders() {
     try {
       await deleteProviderApi(id)
     } catch (e) {
-      console.error(`Failed to delete provider ${id}`, e)
+      // A 404 means the provider is already gone — e.g. PUT /config above
+      // rebuilt the provider list before this loop ran. Deletion is
+      // idempotent, so treat "already deleted" as success without logging.
+      const message = e instanceof Error ? e.message : String(e)
+      if (!message.includes('404')) {
+        console.error(`Failed to delete provider ${id}`, e)
+      }
     }
   }
   deletedProviderIds.value = []
@@ -1007,6 +1037,8 @@ async function saveAdditionalProviders() {
       throw e
     }
   }
+  // All deletes/adds/updates succeeded — the current list is now persisted.
+  originalProvidersJson.value = serializeProviders(additionalProviders.value)
 }
 
 // --- Navigation Guard ---
