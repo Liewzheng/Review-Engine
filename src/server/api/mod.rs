@@ -14,6 +14,7 @@ use tower_http::cors::{Any, CorsLayer};
 use super::AppState;
 use crate::server::auth::AuthConfig;
 
+pub mod callback;
 pub mod config;
 pub mod dashboard;
 pub mod events;
