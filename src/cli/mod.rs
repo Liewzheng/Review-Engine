@@ -551,7 +551,7 @@ pub async fn run() -> Result<()> {
             app_state.ui_config =
                 std::sync::RwLock::new(review_engine::server::api::config::UiConfig::from_app_config(&config));
             let state = Arc::new(app_state);
-            let dispatcher = review_engine::server::dispatcher::MrDispatcher::new();
+            let dispatcher = review_engine::server::dispatcher::MrDispatcher::persistent();
             let mut handlers: Vec<Arc<dyn review_engine::server::webhook::WebhookHandler>> = vec![];
             let gitlab_token = gitlab_token
                 .or_else(|| std::env::var("GITLAB_TOKEN").ok())
