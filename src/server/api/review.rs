@@ -90,8 +90,10 @@ async fn submit_review(State(state): State<Arc<AppState>>, Json(body): Json<Revi
         .await;
 
         match review_result {
-            Ok(Ok((reports, _, dropped_findings))) => {
-                let output = crate::models::ReviewOutput::new(reports).with_dropped_findings(dropped_findings);
+            Ok(Ok((reports, _, dropped_findings, consolidated))) => {
+                let output = crate::models::ReviewOutput::new(reports)
+                    .with_dropped_findings(dropped_findings)
+                    .with_consolidated(consolidated);
                 let value = serde_json::to_value(&output).unwrap_or_default();
                 store_clone
                     .update(task_id, TaskState::Completed, Some(value), None)
