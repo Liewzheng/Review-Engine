@@ -35,6 +35,7 @@ The config file uses TOML format. Below is the complete schema with all availabl
 | `drop_low_confidence` | boolean | `false` | When `true`, findings below `min_confidence` are dropped entirely instead of downgraded |
 | `verification_pass` | boolean | `false` | Extra LLM pass that re-checks each finding against the diff hunks, the referenced file's full content, and the changed-file list; drops findings the evidence disproves (fail-open, adds LLM cost) |
 | `verification_max_file_bytes` | integer | `20000` | Max bytes of referenced file content injected into the verification prompt |
+| `feedback_filtering` | boolean | `true` | When `true`, findings previously marked as false positives via the feedback API (matched by stable fingerprint) are filtered out of subsequent reviews and listed in `dropped_findings`; fail-open when the feedback file is missing or unreadable |
 
 ## `[scoring]`
 
@@ -59,7 +60,7 @@ Penalty points deducted per finding severity. All default to built-in values.
 
 ### `[scoring.risk_thresholds]`
 
-Score-to-risk-level mapping thresholds. Scores are compared with `<=`.
+Score-to-risk-level mapping thresholds. The `*_max` fields are compared with `<=`; `healthy_min` is compared with `>` and takes precedence over the other bands.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -67,6 +68,7 @@ Score-to-risk-level mapping thresholds. Scores are compared with `<=`.
 | `high_max` | integer | `60` | Scores ≤ this (but > critical_max) are High |
 | `medium_max` | integer | `80` | Scores ≤ this (but > high_max) are Medium |
 | `low_max` | integer | `95` | Scores ≤ this (but > medium_max) are LowMedium |
+| `healthy_min` | integer | `90` | Scores > this are Healthy (checked first) |
 
 ```toml
 [scoring]
@@ -87,6 +89,7 @@ critical_max = 40
 high_max = 60
 medium_max = 80
 low_max = 95
+healthy_min = 90
 ```
 
 ## `[commands]`
