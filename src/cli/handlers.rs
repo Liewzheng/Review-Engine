@@ -1099,6 +1099,7 @@ mod tests {
                 lead_override: None,
                 tl_dr: "Risk Level: Medium. 1 high found by 2 reviewers.".to_string(),
             },
+            consensus_reached: true,
         }
     }
 
@@ -1132,7 +1133,7 @@ mod tests {
         assert!(out.contains("Risk Level: medium"));
         assert!(out.contains("### TL;DR"));
         assert!(out.contains("1 high found by 2 reviewers"));
-        assert!(out.contains("### Expert Conflicts"));
+        assert!(out.contains("### ⚖️ Reviewer Discussion"));
         assert!(out.contains("`src/auth.rs:10`"));
         // Lead Summary renders after the expert report.
         let expert_pos = out.find("## Security Review");
