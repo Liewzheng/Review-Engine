@@ -664,7 +664,7 @@ Response 200:
 
 **存储**：JSON 数组，默认 `~/.config/review-engine/feedback.json`，可用环境变量 `REVIEW_FEEDBACK_PATH` 覆盖；写入为原子写（tmp + rename）。
 
-**生效**：被标为误报（`false_positive`）的 finding 将在后续评审中被自动过滤——按 fingerprint 匹配，在验证 pass 之后、lead consolidation 之前移除，并计入 `dropped_findings`（reason 为 "marked false positive by user feedback"）；可用 `[report] feedback_filtering = false` 关闭（feedback 文件缺失或读失败时静默跳过，不影响评审）。
+**生效**：被标为误报（`false_positive`）的 finding 将在后续评审中被自动过滤——按 fingerprint 匹配，在验证 pass 之后、lead consolidation 之前移除，并计入 `dropped_findings`（reason 为 "marked false positive by user feedback"）；可用 `[report] feedback_filtering = false` 关闭（feedback 文件缺失或读失败时静默跳过，不影响评审）。同一 fingerprint 存在多次反馈时，以 `created_at` 最新的裁决为准——误标误报后再补一条 `useful` 即可解除过滤。
 
 #### `POST /api/v1/feedback`
 

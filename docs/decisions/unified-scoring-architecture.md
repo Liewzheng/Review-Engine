@@ -31,8 +31,10 @@ related:
 
 - ~~repo 侧仍保留独立的 `score_to_risk_level()`（`src/repo/experts/mod.rs:118`，返回 `&str`），未与 `scoring::review` 的 `RiskLevel` 映射统一~~ **已解决（v0.7.11）**：
   - `RiskLevel` 新增 `Healthy` 变体（最高档，score > `healthy_min`，默认 90，即 91+）
-  - `RiskThresholdConfig` 新增 `healthy_min`（默认 90）；`score_to_risk_level_with_config()` 先判 healthy 档，再按原 5 档映射，既有阈值 20/40/60/80 不变
-  - repo 侧 `score_to_risk_level()` 已删除，`weighted_total()` 与报告构建统一走 `scoring::review::score_to_risk_level_with_config()`（默认阈值 40/60/80/90，与旧 repo 分段一致，仅 81–90 档标签由 `low` 更名为 `low-medium`）
+  - `RiskThresholdConfig` 新增 `healthy_min`（默认 90）；`score_to_risk_level_with_config()` 最先判定 healthy 档（score > `healthy_min` → Healthy），其余 4 档边界维持不变。注意两套"默认"阈值并存，勿混淆：
+    - 向后兼容包装 `score_to_risk_level()`（无 config 时的回退）冻结旧 MR 分段 `critical_max=20 / high_max=40 / medium_max=60 / low_max=80` + `healthy_min=90`，即 0–20 Critical、21–40 High、41–60 Medium、61–80 LowMedium、81–90 Low、91+ Healthy——既有 20/40/60/80 边界不变，仅在最前面新增 healthy 档
+    - `RiskThresholdConfig::default()`（配置默认值）为 `critical_max=40 / high_max=60 / medium_max=80 / low_max=95` + `healthy_min=90`，即 0–40 Critical、41–60 High、61–80 Medium、81–90 LowMedium、91+ Healthy（`low_max=95` 被 healthy 档遮蔽）
+  - repo 侧 `score_to_risk_level()` 已删除，`weighted_total()` 与报告构建统一走 `scoring::review::score_to_risk_level_with_config()`，传入 `RiskThresholdConfig::default()`（分段与旧 repo 的 40/60/80/90 一致，仅 81–90 档标签由 `low` 更名为 `low-medium`）
   - `RepoReviewOutput` 的 `risk_level` / `risk_label` 字段改为 `RiskLevel` 枚举，经 `models::risk_level_lowercase` serde 适配器序列化为小写字符串（如 `"healthy"` / `"medium"`），JSON 形式与旧输出保持一致
 
 > 注意：下文「文件变更清单」与「迁移对照表」描述的是未被采纳的原始方案（`Scorable` trait 路线），仅作历史记录，请勿当作当前实现状态。

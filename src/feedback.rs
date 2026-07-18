@@ -12,15 +12,16 @@
 //! re-exported as `server::feedback`) and the review pipeline share the
 //! exact same fingerprint algorithm and storage format. The pipeline side
 //! is read-only: [`load_false_positive_fingerprints`] loads the set of
-//! fingerprints the user marked as false positives so the orchestrator can
-//! filter those findings out of subsequent reviews.
+//! fingerprints the user marked as false positives (latest verdict per
+//! fingerprint wins) so the orchestrator can filter those findings out of
+//! subsequent reviews.
 //!
 //! The aggregated [`FeedbackStats`] (hit rate / false-positive rate, also
 //! grouped by category) provide the data basis for later prompt
 //! calibration and false-positive reduction (see
 //! `docs/professional_team_design.md` §6.3 / §8.9).
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -126,11 +127,25 @@ pub fn load_false_positive_fingerprints() -> HashSet<String> {
 ///
 /// Used by tests and by callers that resolve the feedback location
 /// themselves. Same fail-open semantics as the default-path variant.
+///
+/// When a fingerprint has multiple feedback records, the latest verdict
+/// (by `created_at`, later file entry on ties) wins, so a `useful`
+/// recorded after a `false_positive` un-marks the finding again.
 pub fn load_false_positive_fingerprints_from(path: &Path) -> HashSet<String> {
-    load_entries(path)
-        .into_iter()
+    let entries = load_entries(path);
+    let mut latest: HashMap<&str, &FindingFeedback> = HashMap::new();
+    for entry in &entries {
+        match latest.get(entry.finding_fingerprint.as_str()) {
+            Some(prev) if prev.created_at > entry.created_at => {}
+            _ => {
+                latest.insert(entry.finding_fingerprint.as_str(), entry);
+            }
+        }
+    }
+    latest
+        .into_values()
         .filter(|entry| entry.verdict == Verdict::FalsePositive)
-        .map(|entry| entry.finding_fingerprint)
+        .map(|entry| entry.finding_fingerprint.clone())
         .collect()
 }
 
@@ -285,6 +300,16 @@ mod tests {
         }
     }
 
+    fn feedback_at(fingerprint: &str, verdict: Verdict, created_at: DateTime<Utc>) -> FindingFeedback {
+        FindingFeedback {
+            finding_fingerprint: fingerprint.to_string(),
+            verdict,
+            comment: None,
+            category: None,
+            created_at,
+        }
+    }
+
     // ─── fingerprint ─────────────────────────────
 
     #[test]
@@ -338,6 +363,40 @@ mod tests {
         assert!(set.contains("fp-bad-1"));
         assert!(set.contains("fp-bad-2"));
         assert!(!set.contains("fp-useful"));
+    }
+
+    #[test]
+    fn test_load_false_positive_fingerprints_useful_after_false_positive_unmarks() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("feedback.json");
+
+        let t0 = Utc::now();
+        let t1 = t0 + chrono::Duration::seconds(1);
+        let store = FeedbackStore::with_path(Some(path.clone()));
+        store.record(feedback_at("fp1", Verdict::FalsePositive, t0)).unwrap();
+        // Correcting an accidental false-positive mark: latest verdict wins.
+        store.record(feedback_at("fp1", Verdict::Useful, t1)).unwrap();
+        drop(store);
+
+        let set = load_false_positive_fingerprints_from(&path);
+        assert!(set.is_empty());
+    }
+
+    #[test]
+    fn test_load_false_positive_fingerprints_false_positive_after_useful_filters() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("feedback.json");
+
+        let t0 = Utc::now();
+        let t1 = t0 + chrono::Duration::seconds(1);
+        let store = FeedbackStore::with_path(Some(path.clone()));
+        store.record(feedback_at("fp1", Verdict::Useful, t0)).unwrap();
+        store.record(feedback_at("fp1", Verdict::FalsePositive, t1)).unwrap();
+        drop(store);
+
+        let set = load_false_positive_fingerprints_from(&path);
+        assert_eq!(set.len(), 1);
+        assert!(set.contains("fp1"));
     }
 
     #[test]
