@@ -1099,6 +1099,7 @@ mod tests {
                 lead_override: None,
                 tl_dr: "Risk Level: Medium. 1 high found by 2 reviewers.".to_string(),
             },
+            consensus_reached: true,
         }
     }
 

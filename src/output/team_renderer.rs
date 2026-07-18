@@ -380,8 +380,9 @@ mod tests {
         let report =
             render_team_report_with_scoring("CodeReview Board", &reports, &metrics, &[], Some(&custom_scoring));
         assert!(report.contains("CodeReview Board"));
-        assert!(report.contains("50")); // custom critical penalty = 50
-        assert!(report.contains("Risk Level: high")); // 50 <= high_max=50
+        // custom critical penalty 50 with confidence factor 0.96 → score 48
+        assert!(report.contains("| security | 48 | 100% | 48 |"));
+        assert!(report.contains("Risk Level: high")); // 48 <= high_max=50
     }
 
     #[test]
@@ -418,6 +419,7 @@ mod tests {
                 lead_override: None,
                 tl_dr: tl_dr.to_string(),
             },
+            consensus_reached: false,
         }
     }
 
