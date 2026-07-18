@@ -245,6 +245,7 @@ pub struct RiskThresholdConfig {
     pub high_max: u8,     // score <= this → High
     pub medium_max: u8,   // score <= this → Medium
     pub low_max: u8,      // score <= this → Low
+    pub healthy_min: u8,  // score > this → Healthy (checked before the other bands)
 }
 
 impl Default for RiskThresholdConfig {
@@ -254,6 +255,7 @@ impl Default for RiskThresholdConfig {
             high_max: 60,
             medium_max: 80,
             low_max: 95,
+            healthy_min: 90,
         }
     }
 }
@@ -592,6 +594,7 @@ name = "minimal"
         assert_eq!(config.scoring.risk_thresholds.high_max, 60);
         assert_eq!(config.scoring.risk_thresholds.medium_max, 80);
         assert_eq!(config.scoring.risk_thresholds.low_max, 95);
+        assert_eq!(config.scoring.risk_thresholds.healthy_min, 90);
     }
 
     #[test]
@@ -614,6 +617,7 @@ critical_max = 30
 high_max = 50
 medium_max = 70
 low_max = 90
+healthy_min = 85
 "#,
         )
         .unwrap();
@@ -629,6 +633,7 @@ low_max = 90
         assert_eq!(config.scoring.risk_thresholds.high_max, 50);
         assert_eq!(config.scoring.risk_thresholds.medium_max, 70);
         assert_eq!(config.scoring.risk_thresholds.low_max, 90);
+        assert_eq!(config.scoring.risk_thresholds.healthy_min, 85);
     }
 
     #[test]
@@ -661,6 +666,7 @@ low_max = 85
         assert_eq!(config.scoring.risk_thresholds.high_max, 60); // default
         assert_eq!(config.scoring.risk_thresholds.medium_max, 80); // default
         assert_eq!(config.scoring.risk_thresholds.low_max, 85);
+        assert_eq!(config.scoring.risk_thresholds.healthy_min, 90); // default
     }
 
     // ─── ReportConfig ────────────────────────────
