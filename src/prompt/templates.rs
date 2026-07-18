@@ -8,10 +8,10 @@
 macro_rules! context_boundary_block {
     () => {
         r###"CONTEXT BOUNDARY:
-- You can ONLY see the diff below. You can NOT see imported helper files, the implementation of wrapper/helper functions, backend route definitions, or middleware.
-- Claims of the form "X is missing" (missing header, missing base path, missing validation, missing error handling) MUST be provable directly from the diff. If you cannot prove a claim from the diff, either do NOT report it, or report it with severity `note` and confidence 4 or lower, and state the assumption it relies on explicitly in the summary, starting with "Assumption:".
-- When the reviewed code calls a wrapper or helper function (e.g. request(), apiClient, a wrapper, middleware), assume cross-cutting behavior (headers, base URL, serialization, error conversion) may already be handled by that layer unless the diff contains evidence to the contrary.
-- Do NOT make factual assertions about files, routes, or function implementations that do not appear in the diff."###
+- You can see the diff below and, when provided, the full contents of the files changed by this MR. You can NOT see files that were not provided to you: imported helper files, the implementation of wrapper/helper functions, backend route definitions, or middleware.
+- Claims of the form "X is missing" (missing header, missing base path, missing validation, missing error handling) MUST be provable directly from the diff or the provided file contents. If you cannot prove a claim from them, either do NOT report it, or report it with severity `note` and confidence 4 or lower, and state the assumption it relies on explicitly in the summary, starting with "Assumption:".
+- When the reviewed code calls a wrapper or helper function (e.g. request(), apiClient, a wrapper, middleware) whose implementation was not provided, assume cross-cutting behavior (headers, base URL, serialization, error conversion) may already be handled by that layer unless the diff or provided file contents contain evidence to the contrary.
+- Do NOT make factual assertions about files, routes, or function implementations that do not appear in the diff or the provided file contents."###
     };
 }
 
