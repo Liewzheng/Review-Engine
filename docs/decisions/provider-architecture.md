@@ -57,7 +57,8 @@ review-engine 需要支持多个 Git 平台（GitLab、GitHub 等）。每个平
 │  ├── post_inline_comment()                   │
 │  ├── fetch_code_audit_toml()                │
 │  ├── add_reaction()                         │
-│  └── supported_capabilities()               │
+│  ├── find_or_update_discussion()            │
+│  └── update_discussion()                    │
 ├─────────────────────────────────────────────┤
 │  GitLabProvider          GitHubProvider      │
 │  (reqwest + 自有 client)  (reqwest + 自有    │

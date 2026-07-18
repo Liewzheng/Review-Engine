@@ -30,10 +30,13 @@ related:
 │  src/server/api/                                          │
 │  ├── mod.rs       路由注册 + CORS                        │
 │  ├── review.rs    POST/GET/DELETE review 任务             │
-│  ├── repo.rs      POST/GET repo health scan               │
-│  ├── config.rs    GET config/schema, POST validate         │
-│  ├── system.rs    health, version, experts list            │
+│  ├── config.rs    GET/PUT config, schema, validate, test, models │
+│  ├── system.rs    health, version, experts list/update     │
 │  ├── queue.rs     queue stats, tasks, pause/resume/retry   │
+│  ├── llm.rs       LLM providers CRUD + connectivity test   │
+│  ├── logs.rs      日志 SSE 流 + 下载                      │
+│  ├── dashboard.rs Dashboard KPI/趋势/健康聚合              │
+│  ├── events.rs    SSE 实时推送                            │
 │  └── types.rs     TaskStatus, PaginatedResponse 等         │
 │                                                           │
 │  src/server/task_queue.rs   异步任务队列 + TaskStore      │
@@ -166,6 +169,8 @@ Default `per_page`: 20, max `per_page`: 100. When `page` exceeds range, returns 
 
 ### 2. 仓库健康扫描
 
+> **状态：实现中（v0.7.10）** — 本节端点尚未在后端注册（`src/server/api/` 下暂无 repo 路由模块）。
+
 与 review 共用同一套 task 机制，但扫描只走本地文件系统，不需要 LLM，可快速返回。
 
 #### `POST /api/v1/repo-scan`
@@ -193,7 +198,59 @@ Response 202:
 
 #### `GET /api/v1/config`
 
-返回当前生效的 AppConfig（脱敏，隐藏所有 token 字段）。
+返回当前生效的配置（UI 兼容的 `UiConfig` 结构，camelCase 字段）。
+
+#### `PUT /api/v1/config`
+
+保存 UI 配置：重建 LLM provider 列表、更新并发上限，并同步 GitLab webhook 运行时配置（token / secret，无需重启）。
+
+```
+Request: UiConfig JSON（gitlab / llm / rules / advanced 四组字段）
+
+Response 200:
+{
+  "status": "saved"
+}
+```
+
+#### `POST /api/v1/config/test`
+
+测试指定 LLM provider 配置的连通性（请求 `/models`，10s 超时）。
+
+```
+Request:
+{
+  "provider": "openai",
+  "model": "gpt-4o",
+  "api_key": "sk-...",
+  "api_base": "https://api.openai.com/v1"
+}
+
+Response 200:
+{
+  "success": true,
+  "latencyMs": 320,
+  "error": null,
+  "timestamp": "2026-07-18T02:00:00Z"
+}
+```
+
+#### `POST /api/v1/config/models`
+
+拉取指定 API base 下的可用模型列表（OpenAI 兼容 `/models` 接口）。
+
+```
+Request:
+{
+  "api_base": "https://api.openai.com/v1",
+  "api_key": "sk-..."
+}
+
+Response 200:
+{
+  "models": ["gpt-4o", "..."]
+}
+```
 
 #### `GET /api/v1/config/schema`
 
@@ -361,18 +418,22 @@ Response 503:
 
 ### 5. 系统
 
-#### `GET /api/v1/experts`
+#### `GET /api/v1/system/experts`
 
 ```
 Response 200:
 {
   "experts": [
     {
-      "name": "security",
-      "role": "Security Lead",
-      "title": "Staff Security Engineer",
-      "trigger": "always",
-      "enabled": true
+      "id": "security",
+      "name": "Staff Security Engineer",
+      "category": "security",
+      "icon": "Lock",
+      "enabled": true,
+      "weight": 15,
+      "description": "Security Lead",
+      "promptPreview": "You are the Security Lead...",
+      "lastReviews": []
     }
   ]
 }
@@ -380,25 +441,50 @@ Response 200:
 
 VSCode Extension 可用此接口展示可选专家、让用户开关。
 
-#### `GET /api/v1/version`
+#### `PUT /api/v1/system/experts/{id}`
+
+更新单个专家的启用状态与权重（`{id}` 为专家名 slug，如 `security`）。
+
+```
+Request:
+{
+  "enabled": false,
+  "weight": 20
+}
+
+Response 200: 更新后的专家对象（结构同 GET）
+Response 404: { "error": "expert not found" }
+```
+
+#### `GET /api/v1/system/version`
 
 ```
 Response 200:
 {
-  "version": "0.6.10",
-  "commit": "3be7ac1",
+  "version": "0.7.9",
   "features": ["cli", "python"]
 }
 ```
 
-#### `GET /api/v1/health`
+#### `GET /api/v1/system/health`
+
+返回集成与 LLM provider 的配置状态。
 
 ```
 Response 200:
 {
-  "status": "ok"
+  "integrations": [
+    { "service": "GitLab API", "type": "integration", "status": "offline", "latencyMs": 0, "message": "Not configured" }
+  ],
+  "llmProviders": [
+    { "service": "openai gpt-4o", "type": "llm", "status": "success", "latencyMs": 0, "message": "Configured" }
+  ],
+  "overall": "success",
+  "lastChecked": "2026-07-18T02:00:00Z"
 }
 ```
+
+顶层 `GET /health`（及 `/health/ready`）保留，用于存活检查，返回简单状态（见 §7 认证策略）。
 
 ---
 
@@ -413,6 +499,131 @@ data: {"task_id":"...","status":"running","event":"review.started"}
 ```
 
 Web UI 和 Desktop App 通过 `EventSource` 监听，无需轮询。
+
+#### `GET /api/v1/logs`
+
+日志实时流（SSE）。每条 `data` 为一条日志 entry 的 JSON，15s 心跳保活。日志收集器未初始化时返回 `503`。
+
+#### `GET /api/v1/logs/download`
+
+批量下载最近日志（最多 1000 条），`Content-Type: application/x-ndjson`，每行一条 JSON。
+
+---
+
+### 7. LLM Providers 管理
+
+多 provider 的增删改查与连通性测试。Provider id 格式为 `{provider}-{index}`（如 `openai-0`）。
+
+#### `GET /api/v1/llm/providers`
+
+```
+Response 200:
+{
+  "items": [
+    {
+      "id": "openai-0",
+      "name": "openai",
+      "logo": "OpenAI",
+      "status": "healthy",
+      "configured": true,
+      "apiBaseUrl": "https://api.openai.com/v1",
+      "defaultModel": "gpt-4o",
+      "maxTokens": 4096,
+      "temperature": 0.3,
+      "latencyMs": 0,
+      "errorRate": 0.0,
+      "requestCount": 0,
+      "usagePercent": 0,
+      "sparkline": [],
+      "lastChecked": "2026-07-18T02:00:00Z"
+    }
+  ]
+}
+```
+
+API key 永远不会在响应中返回。
+
+#### `POST /api/v1/llm/providers`
+
+新增 provider。必填 `provider` 与 `api_key`；`model`（别名 `defaultModel`）、`api_base`（别名 `apiBaseUrl`）、`max_tokens`、`temperature` 可选。
+
+```
+Response 201:
+{
+  "id": "openai-1",
+  "provider": "openai",
+  "model": "gpt-4o",
+  "configured": true
+}
+
+Response 400: { "error": "provider name is required" } / { "error": "api_key is required" }
+```
+
+#### `PUT /api/v1/llm/providers/{id}`
+
+更新 provider（非空字段才会覆盖；`max_tokens` / `temperature` 总是更新）。
+
+```
+Response 200: { "status": "updated", "id": "openai-0", "provider": "openai", "model": "gpt-4o" }
+Response 404: { "error": "Provider not found" }
+```
+
+#### `DELETE /api/v1/llm/providers/{id}`
+
+```
+Response 200: { "status": "deleted", "id": "openai-0" }
+Response 404: { "error": "Provider not found" }
+```
+
+#### `POST /api/v1/llm/providers/{id}/test`
+
+测试该 provider 的连通性（请求 `/models`，10s 超时）。
+
+```
+Response 200:
+{
+  "success": true,
+  "latencyMs": 320,
+  "error": null,
+  "timestamp": "2026-07-18T02:00:00Z"
+}
+```
+
+---
+
+### 8. Dashboard 聚合
+
+#### `GET /api/v1/dashboard`
+
+聚合返回 Dashboard 页面所需的 KPI、24h 趋势、系统健康与最近 reviews。task store 未初始化时返回全零默认值。
+
+```
+Response 200:
+{
+  "kpis": {
+    "reviewsThisWeek": 12,
+    "reviewsTrend": 0.0,
+    "activeQueue": 1,
+    "successRate": 91.7,
+    "successTrend": 0.0,
+    "avgDurationMs": 28400,
+    "durationTrend": 0.0
+  },
+  "trend": [ { "time": 1789948800, "value": 2 } ],
+  "health": { "integrations": [], "llmProviders": [], "overall": "success", "lastChecked": "..." },
+  "recentReviews": [
+    {
+      "id": "550e8400-...",
+      "mrTitle": "Fix login",
+      "project": "owner/repo",
+      "author": { "name": "alice", "avatarUrl": null },
+      "status": "success",
+      "durationMs": 28400,
+      "createdAt": "2026-07-18T02:00:00Z"
+    }
+  ]
+}
+```
 
 ---
 
@@ -516,8 +727,8 @@ review-engine serve --bind 0.0.0.0 --api-token $(review-engine generate-token)
 | 路由 | `127.0.0.1` | `0.0.0.0` | 原因 |
 |------|------------|-----------|------|
 | `GET /health` | 不认证 | 不认证 | 存活检查，无敏感信息 |
-| `GET /api/v1/version` | 不认证 | 不认证 | 版本信息 |
-| `GET /api/v1/experts` | 不认证 | 不认证 | expert 列表 |
+| `GET /api/v1/system/version` | 不认证 | 不认证 | 版本信息 |
+| `GET /api/v1/system/experts` | 不认证 | 不认证 | expert 列表 |
 | `POST /api/v1/config/validate` | 不认证 | 不认证 | 纯校验，无副作用 |
 | `POST /api/v1/reviews` | 不认证 | **认证** | 消耗 LLM token，有成本风险 |
 | `GET /api/v1/reviews` | 不认证 | **认证** | 可能泄漏代码 diff |
